@@ -101,7 +101,9 @@ export function ClassReports() {
        if (!selectedClassId) return [];
        // Get unique test types for the selected class
        const types = new Set(mockTests.filter(t => t.classId === selectedClassId).map(t => t.type));
-       return ['all', ...Array.from(types)];
+       const uniqueTypes = Array.from(types);
+        // Ensure 'all' has a valid non-empty value if it's the only option potentially
+       return ['all', ...uniqueTypes];
    }, [selectedClassId]);
 
    // Reset filters when class changes
@@ -147,11 +149,12 @@ export function ClassReports() {
   }, [selectedClassId, selectedTestTypeId]);
 
   // 2. Section A vs B Comparison (for selected class, subject, and test type)
+  // Returns an object { data: [], subjectName: "" } or an empty array []
   const sectionComparisonData = useMemo(() => {
-      if (!selectedClassId || selectedSubjectId === 'all') return []; // Requires a specific subject
+      if (!selectedClassId || selectedSubjectId === 'all') return []; // Return empty array if no specific subject
 
        const cls = mockClasses.find(c => c.id === selectedClassId);
-       if (!cls) return [];
+       if (!cls) return []; // Return empty array if class not found
 
        const subjectName = mockSubjects.find(s => s.id === selectedSubjectId)?.name || '';
 
@@ -161,6 +164,9 @@ export function ClassReports() {
             t.subjectId === selectedSubjectId &&
             (selectedTestTypeId === 'all' || t.type === selectedTestTypeId)
         );
+
+        if(relevantTests.length === 0) return { data: [], subjectName }; // Return object with empty data if no tests found
+
 
        // Group tests by type/date if needed, for now just average over all matching tests
        const comparison = cls.sections.map(section => {
@@ -266,6 +272,7 @@ export function ClassReports() {
                    <SelectValue placeholder="Select Class" />
                  </SelectTrigger>
                  <SelectContent>
+                   <SelectItem value="">Select Class</SelectItem> {/* Add an explicit empty value option */}
                    {mockClasses.map(cls => (
                       <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
                    ))}
@@ -279,7 +286,7 @@ export function ClassReports() {
                    <SelectValue placeholder="Select Subject" />
                  </SelectTrigger>
                  <SelectContent>
-                     {/* Removed the potentially empty value SelectItem */}
+                     {/* Ensure 'all' option has a value */}
                      {availableSubjects.map(sub => (
                         <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
                      ))}
@@ -344,11 +351,12 @@ export function ClassReports() {
                      <CardHeader>
                          <CardTitle className="text-lg">Section Comparison</CardTitle>
                          <CardDescription>
-                              Class: {mockClasses.find(c=>c.id === selectedClassId)?.name} | Subject: {sectionComparisonData?.subjectName || 'N/A'} | Test Type: {selectedTestTypeId === 'all' ? 'All' : selectedTestTypeId}
+                              Class: {mockClasses.find(c=>c.id === selectedClassId)?.name} | Subject: {typeof sectionComparisonData === 'object' && sectionComparisonData.subjectName ? sectionComparisonData.subjectName : 'N/A'} | Test Type: {selectedTestTypeId === 'all' ? 'All' : selectedTestTypeId}
                           </CardDescription>
                      </CardHeader>
                      <CardContent>
-                         {sectionComparisonData && sectionComparisonData.data.length > 0 ? (
+                         {/* Check if sectionComparisonData is an object and its data array has items */}
+                         {typeof sectionComparisonData === 'object' && sectionComparisonData.data && sectionComparisonData.data.length > 0 ? (
                              <ChartContainer config={chartConfig} className="h-[300px] w-full">
                                <BarChart data={sectionComparisonData.data} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 0 }}>
                                  <CartesianGrid horizontal={false} strokeDasharray="3 3" />
@@ -415,3 +423,6 @@ export function ClassReports() {
   );
 }
 
+
+
+    
