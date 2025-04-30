@@ -210,12 +210,12 @@ export function PerformanceInsights() {
               </div>
               <div className="flex-1">
                  <Label htmlFor="insightSection">Section</Label>
-                 <Select value={selectedSectionId} onValueChange={setSelectedSectionId} disabled={!selectedClassId}>
+                 <Select value={selectedSectionId} onValueChange={setSelectedSectionId} disabled={!selectedClassId || availableSections.length === 0}>
                    <SelectTrigger id="insightSection">
                      <SelectValue placeholder="Select Section" />
                    </SelectTrigger>
                    <SelectContent>
-                      {availableSections.length === 0 && <SelectItem value="" disabled>No sections</SelectItem>}
+                      {/* Removed the potentially empty value SelectItem */}
                      {availableSections.map(sec => (
                         <SelectItem key={sec.id} value={sec.id}>Section {sec.name}</SelectItem>
                      ))}
@@ -224,12 +224,12 @@ export function PerformanceInsights() {
               </div>
               <div className="flex-1">
                  <Label htmlFor="insightStudent">Student</Label>
-                 <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={!selectedSectionId}>
+                 <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={!selectedSectionId || availableStudents.length === 0}>
                    <SelectTrigger id="insightStudent">
                      <SelectValue placeholder="Select Student" />
                    </SelectTrigger>
                    <SelectContent>
-                      {availableStudents.length === 0 && <SelectItem value="" disabled>No students</SelectItem>}
+                      {/* Removed the potentially empty value SelectItem */}
                      {availableStudents.map(stu => (
                         <SelectItem key={stu.id} value={stu.id}>{stu.name} ({stu.rollNo})</SelectItem>
                      ))}
@@ -371,3 +371,4 @@ export function PerformanceInsights() {
     </div>
   );
 }
+

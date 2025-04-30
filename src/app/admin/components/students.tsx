@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react'; // Import useEffect
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -172,12 +172,13 @@ export function Students() {
                  ))}
                </SelectContent>
              </Select>
-              <Select value={filterSectionId} onValueChange={setFilterSectionId} disabled={filterClassId === 'all'}>
+              <Select value={filterSectionId} onValueChange={setFilterSectionId} disabled={filterClassId === 'all' || availableSections.length === 0}>
                <SelectTrigger className="w-full md:w-[160px]">
                  <SelectValue placeholder="Filter by Section" />
                </SelectTrigger>
                <SelectContent>
                  <SelectItem value="all">All Sections</SelectItem>
+                  {/* Removed the potentially empty value SelectItem */}
                   {availableSections.map(sec => (
                     <SelectItem key={sec.id} value={sec.id}>Section {sec.name}</SelectItem>
                  ))}

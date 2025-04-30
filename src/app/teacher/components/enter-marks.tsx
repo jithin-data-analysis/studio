@@ -256,12 +256,12 @@ export function EnterMarks() {
           </div>
           <div>
              <Label htmlFor="sectionSelect">Section*</Label>
-             <Select value={selectedSectionId} onValueChange={setSelectedSectionId} disabled={!selectedClassId} required>
+             <Select value={selectedSectionId} onValueChange={setSelectedSectionId} disabled={!selectedClassId || availableSections.length === 0} required>
                <SelectTrigger id="sectionSelect">
                  <SelectValue placeholder="Select Section" />
                </SelectTrigger>
                <SelectContent>
-                  {availableSections.length === 0 && <SelectItem value="" disabled>No sections available</SelectItem>}
+                  {/* Removed the potentially empty value SelectItem */}
                  {availableSections.map(sec => (
                     <SelectItem key={sec.id} value={sec.id}>Section {sec.name}</SelectItem>
                  ))}
@@ -270,12 +270,12 @@ export function EnterMarks() {
           </div>
            <div>
              <Label htmlFor="subjectSelect">Subject*</Label>
-              <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} disabled={!selectedSectionId} required>
+              <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} disabled={!selectedSectionId || availableSubjects.length === 0} required>
                <SelectTrigger id="subjectSelect">
                  <SelectValue placeholder="Select Subject" />
                </SelectTrigger>
                <SelectContent>
-                  {availableSubjects.length === 0 && <SelectItem value="" disabled>No subjects for class</SelectItem>}
+                  {/* Removed the potentially empty value SelectItem */}
                  {availableSubjects.map(sub => (
                     <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
                  ))}
@@ -361,3 +361,4 @@ export function EnterMarks() {
     </Card>
   );
 }
+

@@ -92,7 +92,9 @@ export function ClassReports() {
   const availableSubjects = useMemo(() => {
       if (!selectedClassId) return [];
       // Add 'All Subjects' option
-      return [{ id: 'all', name: 'All Subjects', classId: selectedClassId }, ...mockSubjects.filter(s => s.classId === selectedClassId)];
+      const subjectsForClass = mockSubjects.filter(s => s.classId === selectedClassId);
+      if (subjectsForClass.length === 0) return []; // Return empty if no subjects for the class
+      return [{ id: 'all', name: 'All Subjects', classId: selectedClassId }, ...subjectsForClass];
   }, [selectedClassId]);
 
    const availableTestTypes = useMemo(() => {
@@ -272,12 +274,12 @@ export function ClassReports() {
             </div>
              <div className="flex-1 grid gap-1.5">
                <Label htmlFor="reportSubject">Subject</Label>
-                <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} disabled={!selectedClassId}>
+                <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} disabled={!selectedClassId || availableSubjects.length === 0}>
                  <SelectTrigger id="reportSubject">
                    <SelectValue placeholder="Select Subject" />
                  </SelectTrigger>
                  <SelectContent>
-                     {availableSubjects.length === 0 && <SelectItem value="" disabled>No subjects</SelectItem>}
+                     {/* Removed the potentially empty value SelectItem */}
                      {availableSubjects.map(sub => (
                         <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
                      ))}
@@ -412,3 +414,4 @@ export function ClassReports() {
     </div>
   );
 }
+
