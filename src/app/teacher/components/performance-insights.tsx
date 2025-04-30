@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Label } from '@/components/ui/label'; // Import Label
 import { Loader2, Brain, Sparkles, AlertTriangle, FlaskConical, UserCheck, Users } from 'lucide-react';
 import { type Class, type Section, type Student, type Test, type Subject } from '@/types';
 import { generateStudentInsights } from '@/ai/flows/generate-student-insights';
@@ -215,10 +216,13 @@ export function PerformanceInsights() {
                      <SelectValue placeholder="Select Section" />
                    </SelectTrigger>
                    <SelectContent>
-                      {/* Removed the potentially empty value SelectItem */}
-                     {availableSections.map(sec => (
-                        <SelectItem key={sec.id} value={sec.id}>Section {sec.name}</SelectItem>
-                     ))}
+                      {availableSections.length > 0 ? (
+                        availableSections.map(sec => (
+                          <SelectItem key={sec.id} value={sec.id}>Section {sec.name}</SelectItem>
+                        ))
+                      ) : (
+                          <SelectItem value="no-sections" disabled>No Sections Available</SelectItem>
+                      )}
                    </SelectContent>
                  </Select>
               </div>
@@ -229,10 +233,13 @@ export function PerformanceInsights() {
                      <SelectValue placeholder="Select Student" />
                    </SelectTrigger>
                    <SelectContent>
-                      {/* Removed the potentially empty value SelectItem */}
-                     {availableStudents.map(stu => (
-                        <SelectItem key={stu.id} value={stu.id}>{stu.name} ({stu.rollNo})</SelectItem>
-                     ))}
+                     {availableStudents.length > 0 ? (
+                        availableStudents.map(stu => (
+                            <SelectItem key={stu.id} value={stu.id}>{stu.name} ({stu.rollNo})</SelectItem>
+                        ))
+                     ) : (
+                         <SelectItem value="no-students" disabled>No Students Available</SelectItem>
+                     )}
                    </SelectContent>
                  </Select>
               </div>
@@ -361,7 +368,7 @@ export function PerformanceInsights() {
                      </div>
                  )}
 
-                  {!selectedClassId && !selectedTerm && !isLoadingCorrelation && !correlationError && (
+                  {(!selectedClassId || !selectedTerm) && !isLoadingCorrelation && !correlationError && ( // Adjusted condition
                     <p className="text-center text-muted-foreground pt-4">Select a class and term to analyze co-curricular correlations.</p>
                  )}
 
@@ -371,4 +378,3 @@ export function PerformanceInsights() {
     </div>
   );
 }
-
