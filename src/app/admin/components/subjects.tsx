@@ -229,7 +229,7 @@ export function Subjects() {
 
         <div className="border rounded-md overflow-hidden shadow-sm"> {/* Added shadow */}
           <Table>
-             <TableHeader className="bg-muted/50"> {/* Styled header */}
+             <TableHeader className="bg-muted/50">
               <TableRow>
                 <TableHead>Subject Name</TableHead>
                 <TableHead>Class</TableHead>

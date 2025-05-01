@@ -58,6 +58,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator'; // Import Separator
+import { generateStudentInsights } from '@/ai/flows/generate-student-insights'; // Import the AI flow
 
 // Define a type for the test form data within the component
 interface TestFormData {
@@ -120,6 +121,9 @@ const mockSavedTests: TestFormData[] = [
      { id: 'test2-math-cls8', name: 'Midterm Exam', date: '2024-05-15', totalMarks: 50, file: null, chapters: ['chap1','chap2'], topics: ['top1', 'top3'], classId: 'cls8', subjectId: 'sub3'},
 ];
 
+// Add a state for student-specific analysis results
+type AnalysisResult = { studentId: string; insights: string };
+
 export function EnterMarks() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
@@ -133,6 +137,9 @@ export function EnterMarks() {
   const [activeAccordionItems, setActiveAccordionItems] = useState<string[]>([]);
   const csvInputRef = useRef<HTMLInputElement>(null); // Ref for CSV input
   const { toast } = useToast();
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]); // State for analysis results
+  const [isAnalyzing, setIsAnalyzing] = useState<{[studentId: string]: boolean}>({}); // Track analysis status per student
+
 
   const availableSubjects = useMemo(() => {
       if (!selectedClassId) return [];
@@ -160,6 +167,7 @@ export function EnterMarks() {
        setSelectedTestForMarks('');
        setStudentsForMarkEntry([]);
        setStudentMarks({});
+       setAnalysisResults([]); // Clear analysis results
    }, [selectedClassId]);
 
     useEffect(() => { // Reset tests and mark entry section when subject changes
@@ -168,6 +176,7 @@ export function EnterMarks() {
        setSelectedTestForMarks('');
        setStudentsForMarkEntry([]);
        setStudentMarks({});
+       setAnalysisResults([]); // Clear analysis results
    }, [selectedSubjectId]);
 
     useEffect(() => { // Fetch students and potentially existing marks when a test is selected for marking
@@ -188,13 +197,16 @@ export function EnterMarks() {
                      existingMarks[student.id] = ''; // Default to empty
                 });
                 setStudentMarks(existingMarks);
+                setAnalysisResults([]); // Clear analysis when test changes
             } else {
                 setStudentsForMarkEntry([]);
                 setStudentMarks({});
+                setAnalysisResults([]);
             }
         } else {
             setStudentsForMarkEntry([]);
             setStudentMarks({});
+            setAnalysisResults([]);
         }
    }, [selectedTestForMarks, savedTests]); // Re-run when selected test changes
 
@@ -397,6 +409,60 @@ export function EnterMarks() {
       }
   };
 
+  // Trigger analysis for a single student
+  const handleAnalyzeStudent = async (student: Student) => {
+      const testDetails = savedTests.find(t => t.id === selectedTestForMarks);
+      const obtainedMark = studentMarks[student.id];
+      const subject = mockSubjects.find(s => s.id === testDetails?.subjectId);
+
+      if (!testDetails || obtainedMark === '' || !subject) {
+          toast({ title: "Missing Data", description: "Cannot analyze without test details, subject, and obtained marks.", variant: "destructive" });
+          return;
+      }
+
+      setIsAnalyzing(prev => ({...prev, [student.id]: true})); // Set analyzing state for this student
+      try {
+          // Prepare input for the AI flow
+          const input = {
+              studentId: student.id,
+              testId: testDetails.id,
+              obtainedMarks: obtainedMark as number,
+              totalMarks: testDetails.totalMarks as number,
+              subject: subject.name,
+              date: testDetails.date,
+              type: testDetails.type || 'Test', // Provide default type if optional
+              // Add historical context if available
+              // historicalContext: fetchHistoricalData(student.id, subject.id),
+          };
+
+          const result = await generateStudentInsights(input);
+
+          // Create a combined insight string or use a specific part
+          const insightText = `Trends: ${result.trends}. Weaknesses: ${result.weaknesses}. Tips: ${result.personalizedTips}. Predictions: ${result.predictiveOutcomes}`;
+
+          // Update analysis results state
+          setAnalysisResults(prev => {
+              const existingIndex = prev.findIndex(r => r.studentId === student.id);
+              if (existingIndex > -1) {
+                  const updated = [...prev];
+                  updated[existingIndex] = { studentId: student.id, insights: insightText };
+                  return updated;
+              } else {
+                  return [...prev, { studentId: student.id, insights: insightText }];
+              }
+          });
+
+           toast({ title: `Analyzed ${student.name}`, description: "AI insights generated successfully." });
+
+      } catch (error: any) {
+          console.error(`Failed to analyze student ${student.id}:`, error);
+          toast({ title: "Analysis Failed", description: `Could not generate insights for ${student.name}. ${error.message || ''}`, variant: "destructive" });
+      } finally {
+          setIsAnalyzing(prev => ({...prev, [student.id]: false})); // Reset analyzing state
+      }
+  };
+
+
   const handleSaveMarks = async () => {
      if (!selectedTestForMarks || studentsForMarkEntry.length === 0) {
          toast({ title: "Nothing to Save", description: "Select a test and ensure students are listed.", variant: "destructive" });
@@ -430,9 +496,13 @@ export function EnterMarks() {
          // Simulate API call to save/update marks
          await new Promise(resolve => setTimeout(resolve, 1000));
 
-         // --- Trigger AI Marks Analysis (Placeholder) ---
-         // This would likely happen server-side after successful mark saving
-         // await triggerMarksAnalysis(selectedTestForMarks, marksToSave);
+         // --- Trigger AI Marks Analysis (Potentially trigger for all students after save) ---
+         // You might want a button to analyze all students or trigger it here
+         // studentsForMarkEntry.forEach(student => {
+         //     if (studentMarks[student.id] !== '') {
+         //         handleAnalyzeStudent(student); // Consider potential rate limits
+         //     }
+         // });
          // -------------------------------------------------
 
          toast({ title: "Marks Saved", description: `Marks for ${savedTests.find(t=>t.id===selectedTestForMarks)?.name} saved successfully.` });
@@ -536,30 +606,75 @@ export function EnterMarks() {
 
   };
 
-  const handlePrintAnalysis = () => {
-      // TODO: Implement printable analysis report generation
-      // 1. Gather necessary data (student, test, marks, AI insights if available)
-      // 2. Format into a printable HTML structure
-      // 3. Use window.print()
-      toast({ title: "Coming Soon", description: "Printable analysis report is under development." });
+  const handlePrintAnalysis = (studentId: string) => {
+      const student = studentsForMarkEntry.find(s => s.id === studentId);
+      const analysis = analysisResults.find(r => r.studentId === studentId);
+      const test = savedTests.find(t => t.id === selectedTestForMarks);
+      const marks = studentMarks[studentId];
+
+      if (!student || !analysis || !test) {
+          toast({ title: "Cannot Print", description: "Missing student data, analysis, or test details." });
+          return;
+      }
+
+      const printWindow = window.open('', '_blank', 'height=600,width=800');
+      if (!printWindow) {
+          toast({ title: "Print Error", description: "Could not open print window. Check pop-up blocker.", variant: "destructive" });
+          return;
+      }
+
+      // Simple HTML structure for printing
+      printWindow.document.write('<html><head><title>Student Analysis Report</title>');
+      // Add some basic styling
+      printWindow.document.write(`
+          <style>
+              body { font-family: sans-serif; line-height: 1.5; padding: 20px; }
+              h1, h2 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+              p { margin: 10px 0; }
+              .section { margin-bottom: 15px; padding-left: 10px; border-left: 3px solid #007bff; }
+              .label { font-weight: bold; color: #555; }
+          </style>
+      `);
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(`<h1>Student Analysis Report</h1>`);
+      printWindow.document.write(`<p><span class="label">Student:</span> ${student.name} (Roll: ${student.rollNo})</p>`);
+      printWindow.document.write(`<p><span class="label">Test:</span> ${test.name} (${test.date})</p>`);
+      printWindow.document.write(`<p><span class="label">Subject:</span> ${mockSubjects.find(s => s.id === test.subjectId)?.name || 'N/A'}</p>`);
+      printWindow.document.write(`<p><span class="label">Marks Obtained:</span> ${marks}/${test.totalMarks}</p>`);
+      printWindow.document.write(`<h2>AI Insights</h2>`);
+      // Format the insights nicely - assuming insightText format from handleAnalyzeStudent
+      const insightsParts = analysis.insights.split('. ').filter(part => part);
+      insightsParts.forEach(part => {
+          const [label, ...textParts] = part.split(':');
+          const text = textParts.join(':').trim();
+          if (label && text) {
+              printWindow.document.write(`<div class="section">`);
+              printWindow.document.write(`<p><span class="label">${label}:</span> ${text}</p>`);
+              printWindow.document.write(`</div>`);
+          }
+      });
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.print();
   }
+
 
   return (
     <div className="space-y-6">
        {/* 1. Class and Subject Selection */}
-      <Card className="shadow-md dark:shadow-indigo-900/10 overflow-hidden border-t-4 border-indigo-500 rounded-xl">
-          <CardHeader className="bg-gradient-to-r from-indigo-50 via-white to-teal-50 dark:from-indigo-900/20 dark:via-background dark:to-teal-900/20 p-4 md:p-6">
-             <CardTitle className="text-xl md:text-2xl font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-2">
-                 <Users className="h-6 w-6"/> Select Class & Subject
+      <Card className="shadow-lg dark:shadow-indigo-900/20 overflow-hidden border-t-4 border-indigo-500 rounded-xl bg-gradient-to-br from-indigo-50/50 via-white to-teal-50/30 dark:from-indigo-900/30 dark:via-background dark:to-teal-900/20 transition-all hover:shadow-xl">
+          <CardHeader className="p-4 md:p-6">
+             <CardTitle className="text-xl md:text-2xl font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-2 animate-fade-in-down">
+                 <Users className="h-6 w-6 text-indigo-500"/> Select Class & Subject
              </CardTitle>
-             <CardDescription className="text-muted-foreground mt-1">Choose the class and subject to manage tests and enter marks.</CardDescription>
+             <CardDescription className="text-muted-foreground mt-1 animate-fade-in-down animation-delay-100">Choose the class and subject to manage tests and enter marks.</CardDescription>
           </CardHeader>
           <CardContent className="p-4 md:p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in animation-delay-200">
                   <div>
-                     <Label htmlFor="classSelect" className="text-sm font-medium">Class*</Label>
+                     <Label htmlFor="classSelect" className="text-sm font-medium text-indigo-800 dark:text-indigo-200">Class*</Label>
                      <Select value={selectedClassId} onValueChange={setSelectedClassId} required>
-                       <SelectTrigger id="classSelect" className="mt-1 bg-background shadow-sm">
+                       <SelectTrigger id="classSelect" className="mt-1 bg-background shadow-sm focus:ring-2 focus:ring-indigo-500 border-indigo-200 dark:border-indigo-800 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors">
                          <SelectValue placeholder="Select Class" />
                        </SelectTrigger>
                        <SelectContent>
@@ -570,9 +685,9 @@ export function EnterMarks() {
                      </Select>
                   </div>
                   <div>
-                     <Label htmlFor="subjectSelect" className="text-sm font-medium">Subject*</Label>
+                     <Label htmlFor="subjectSelect" className="text-sm font-medium text-indigo-800 dark:text-indigo-200">Subject*</Label>
                       <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} disabled={!selectedClassId || availableSubjects.length === 0} required>
-                       <SelectTrigger id="subjectSelect" className="mt-1 bg-background shadow-sm">
+                       <SelectTrigger id="subjectSelect" className="mt-1 bg-background shadow-sm focus:ring-2 focus:ring-indigo-500 border-indigo-200 dark:border-indigo-800 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors">
                          <SelectValue placeholder="Select Subject" />
                        </SelectTrigger>
                        <SelectContent>
@@ -591,20 +706,20 @@ export function EnterMarks() {
       </Card>
 
        {/* 2. Define New Tests Section */}
-      <Card className="shadow-md dark:shadow-indigo-900/10 overflow-hidden border-t-4 border-teal-500 rounded-xl">
-        <CardHeader className="bg-gradient-to-r from-teal-50 via-white to-indigo-50 dark:from-teal-900/20 dark:via-background dark:to-indigo-900/20 p-4 md:p-6">
-           <CardTitle className="text-xl md:text-2xl font-bold text-teal-700 dark:text-teal-300 flex items-center gap-2">
-               <ClipboardList className="h-6 w-6"/> Define New Tests
+      <Card className="shadow-lg dark:shadow-teal-900/20 overflow-hidden border-t-4 border-teal-500 rounded-xl bg-gradient-to-br from-teal-50/30 via-white to-indigo-50/20 dark:from-teal-900/30 dark:via-background dark:to-indigo-900/20 transition-all hover:shadow-xl">
+        <CardHeader className="p-4 md:p-6">
+           <CardTitle className="text-xl md:text-2xl font-bold text-teal-700 dark:text-teal-300 flex items-center gap-2 animate-fade-in-down">
+               <ClipboardList className="h-6 w-6 text-teal-500"/> Define New Tests
            </CardTitle>
-           <CardDescription className="text-muted-foreground mt-1">Add details for new tests for the selected class and subject. Saved tests will appear in the 'Enter Marks' section.</CardDescription>
+           <CardDescription className="text-muted-foreground mt-1 animate-fade-in-down animation-delay-100">Add details for new tests for the selected class and subject. Saved tests will appear in the 'Enter Marks' section.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 p-4 md:p-6">
-            <Button onClick={handleAddTest} disabled={!selectedClassId || !selectedSubjectId} variant="secondary" className="shadow-sm hover:shadow-md transition-shadow group">
+            <Button onClick={handleAddTest} disabled={!selectedClassId || !selectedSubjectId} variant="secondary" className="shadow-md hover:shadow-lg transition-shadow group bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-200 hover:bg-teal-200 dark:hover:bg-teal-900/60 border border-teal-200 dark:border-teal-800 animate-fade-in animation-delay-200">
                  <span className="group-hover:animate-bounce mr-2">✨</span> Add New Test Definition <PlusCircle className="ml-2 h-4 w-4" />
             </Button>
 
             {definedTests.length === 0 && (selectedClassId && selectedSubjectId) && (
-                 <div className="text-center text-muted-foreground py-10 border-2 border-dashed border-muted rounded-lg bg-muted/20">
+                 <div className="text-center text-muted-foreground py-10 border-2 border-dashed border-teal-200 dark:border-teal-800 rounded-lg bg-teal-50/20 dark:bg-teal-900/10 animate-fade-in animation-delay-300">
                      <p className="font-medium">No new tests being defined.</p>
                      <p className="text-sm">Click the magic button above to start or select a saved test below to enter marks.</p>
                  </div>
@@ -613,7 +728,7 @@ export function EnterMarks() {
              {definedTests.length > 0 && (
                  <Accordion
                      type="multiple"
-                     className="w-full space-y-2"
+                     className="w-full space-y-3" // Increased spacing
                      value={activeAccordionItems}
                      onValueChange={setActiveAccordionItems}
                  >
@@ -621,9 +736,10 @@ export function EnterMarks() {
                       <AccordionItem
                          value={test.id}
                          key={test.id}
-                         className="border border-border rounded-lg overflow-hidden shadow-sm bg-background dark:bg-muted/20 hover:border-teal-300 dark:hover:border-teal-700 transition-colors"
+                         className="border border-teal-200 dark:border-teal-800 rounded-lg overflow-hidden shadow-sm bg-background dark:bg-muted/20 hover:border-teal-400 dark:hover:border-teal-600 transition-colors duration-300 animate-fade-in"
+                         style={{animationDelay: `${index * 100}ms`}} // Stagger animation
                       >
-                          <AccordionTrigger className="px-4 py-3 hover:bg-teal-50/50 dark:hover:bg-teal-900/20 hover:no-underline transition-colors duration-150 data-[state=open]:bg-teal-50/50 dark:data-[state=open]:bg-teal-900/20">
+                          <AccordionTrigger className="px-4 py-3 hover:bg-teal-50/50 dark:hover:bg-teal-900/20 hover:no-underline transition-colors duration-150 data-[state=open]:bg-teal-50/50 dark:data-[state=open]:bg-teal-900/20 rounded-t-lg">
                               <div className="flex items-center justify-between w-full">
                                   <div className="flex items-center gap-2 text-teal-800 dark:text-teal-200">
                                        <span className="font-semibold">{test.name || `Untitled Test ${index + 1}`}</span>
@@ -639,30 +755,30 @@ export function EnterMarks() {
                                   </div>
                               </div>
                           </AccordionTrigger>
-                          <AccordionContent className="p-4 border-t border-border bg-muted/10 dark:bg-muted/5">
+                          <AccordionContent className="p-4 border-t border-teal-200 dark:border-teal-800 bg-teal-50/10 dark:bg-teal-900/5 rounded-b-lg">
                              {/* Test Form Fields */}
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                                  <div>
-                                     <Label htmlFor={`testName-${test.id}`} className="text-xs font-medium">Test Name*</Label>
-                                     <Input id={`testName-${test.id}`} value={test.name} onChange={(e) => handleTestChange(test.id, 'name', e.target.value)} placeholder="e.g., Mid-Term Exam" required className="bg-background" />
+                                     <Label htmlFor={`testName-${test.id}`} className="text-xs font-medium text-teal-700 dark:text-teal-300">Test Name*</Label>
+                                     <Input id={`testName-${test.id}`} value={test.name} onChange={(e) => handleTestChange(test.id, 'name', e.target.value)} placeholder="e.g., Mid-Term Exam" required className="bg-background border-teal-200 dark:border-teal-700 focus:ring-teal-500" />
                                  </div>
                                  <div>
-                                      <Label htmlFor={`testDate-${test.id}`} className="text-xs font-medium">Date*</Label>
+                                      <Label htmlFor={`testDate-${test.id}`} className="text-xs font-medium text-teal-700 dark:text-teal-300">Date*</Label>
                                        <div className="relative">
                                           <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                          <Input id={`testDate-${test.id}`} type="date" value={test.date} onChange={(e) => handleTestChange(test.id, 'date', e.target.value)} required className="bg-background pl-8" />
+                                          <Input id={`testDate-${test.id}`} type="date" value={test.date} onChange={(e) => handleTestChange(test.id, 'date', e.target.value)} required className="bg-background pl-8 border-teal-200 dark:border-teal-700 focus:ring-teal-500" />
                                       </div>
                                   </div>
                                    <div>
-                                      <Label htmlFor={`totalMarks-${test.id}`} className="text-xs font-medium">Total Marks*</Label>
-                                      <Input id={`totalMarks-${test.id}`} type="number" value={test.totalMarks} onChange={(e) => handleTestChange(test.id, 'totalMarks', e.target.value)} placeholder="e.g., 100" min="0" required className="bg-background" />
+                                      <Label htmlFor={`totalMarks-${test.id}`} className="text-xs font-medium text-teal-700 dark:text-teal-300">Total Marks*</Label>
+                                      <Input id={`totalMarks-${test.id}`} type="number" value={test.totalMarks} onChange={(e) => handleTestChange(test.id, 'totalMarks', e.target.value)} placeholder="e.g., 100" min="0" required className="bg-background border-teal-200 dark:border-teal-700 focus:ring-teal-500" />
                                        {(typeof test.totalMarks === 'number' && test.totalMarks < 0) && <p className="text-xs text-destructive mt-1">Marks cannot be negative.</p>}
                                   </div>
                                   <div>
-                                      <Label htmlFor={`fileUpload-${test.id}`} className="text-xs font-medium">Upload Paper (PDF/DOCX)</Label>
+                                      <Label htmlFor={`fileUpload-${test.id}`} className="text-xs font-medium text-teal-700 dark:text-teal-300">Upload Paper (PDF/DOCX)</Label>
                                       <div className="relative">
                                          <Upload className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                          <Input id={`fileUpload-${test.id}`} type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleFileChange(test.id, e)} className="cursor-pointer file:cursor-pointer pl-8 file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 bg-background" />
+                                          <Input id={`fileUpload-${test.id}`} type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleFileChange(test.id, e)} className="cursor-pointer file:cursor-pointer pl-8 file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-teal-600 file:text-white hover:file:bg-teal-700 bg-background border-teal-200 dark:border-teal-700 focus:ring-teal-500" />
                                       </div>
                                       {test.file && <p className="text-xs text-muted-foreground mt-1 truncate" title={test.file.name}><FileText className="inline h-3 w-3 mr-1"/> {test.file.name}</p>}
                                   </div>
@@ -670,9 +786,9 @@ export function EnterMarks() {
 
                              {/* Syllabus Linking */}
                              {currentSyllabus ? (
-                                 <div className="mt-6 pt-4 border-t border-border/50">
-                                      <h4 className="font-medium text-sm mb-3 flex items-center gap-2"><BookCopy className="h-4 w-4" /> Link to Syllabus Covered</h4>
-                                       <ScrollArea className="h-48 w-full rounded-md border border-border bg-background p-3">
+                                 <div className="mt-6 pt-4 border-t border-teal-200/50 dark:border-teal-800/50">
+                                      <h4 className="font-medium text-sm mb-3 flex items-center gap-2 text-teal-700 dark:text-teal-300"><BookCopy className="h-4 w-4" /> Link to Syllabus Covered</h4>
+                                       <ScrollArea className="h-48 w-full rounded-md border border-teal-200 dark:border-teal-700 bg-background p-3">
                                           <div className="space-y-3">
                                               {currentSyllabus.chapters.length === 0 && <p className="text-sm text-muted-foreground">No syllabus chapters found for this subject.</p>}
                                               {currentSyllabus.chapters.map((chapter) => (
@@ -695,10 +811,10 @@ export function EnterMarks() {
                                        </ScrollArea>
                                   </div>
                                ) : (
-                                   <p className="text-xs text-muted-foreground mt-4 pt-2 border-t border-border/50">Syllabus data not available for this subject to link topics.</p>
+                                   <p className="text-xs text-muted-foreground mt-4 pt-2 border-t border-teal-200/50 dark:border-teal-800/50">Syllabus data not available for this subject to link topics.</p>
                                )}
-                             <div className="flex justify-end pt-4 mt-4 border-t border-border/50">
-                                  <Button variant="destructive" size="sm" onClick={() => handleRemoveTest(test.id)}>
+                             <div className="flex justify-end pt-4 mt-4 border-t border-teal-200/50 dark:border-teal-800/50">
+                                  <Button variant="destructive" size="sm" onClick={() => handleRemoveTest(test.id)} className="opacity-80 hover:opacity-100 transition-opacity">
                                       <Trash2 className="mr-1 h-3 w-3" /> Remove This Definition
                                   </Button>
                               </div>
@@ -709,8 +825,8 @@ export function EnterMarks() {
              )}
         </CardContent>
          {definedTests.length > 0 && (
-              <CardFooter className="flex justify-end border-t pt-4 mt-6 p-4 md:p-6 bg-muted/30 dark:bg-muted/10">
-                 <Button onClick={handleSaveAllDefinedTests} disabled={isSavingTests} size="lg" className="bg-teal-600 hover:bg-teal-700 text-white shadow-lg hover:shadow-teal-500/40 transition-all duration-300 transform hover:scale-105">
+              <CardFooter className="flex justify-end border-t border-teal-200 dark:border-teal-800 pt-4 mt-6 p-4 md:p-6 bg-teal-50/30 dark:bg-teal-900/20 rounded-b-xl">
+                 <Button onClick={handleSaveAllDefinedTests} disabled={isSavingTests} size="lg" className="bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white shadow-lg hover:shadow-cyan-500/40 transition-all duration-300 transform hover:scale-105 animate-fade-in">
                    {isSavingTests ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                    Save All New Test Definitions ({definedTests.length})
                  </Button>
@@ -718,22 +834,22 @@ export function EnterMarks() {
          )}
       </Card>
 
-      <Separator />
+      <Separator className="my-8 border-border/50" />
 
       {/* 3. Enter Marks Section */}
-       <Card className="shadow-md dark:shadow-indigo-900/10 overflow-hidden border-t-4 border-blue-500 rounded-xl">
-          <CardHeader className="bg-gradient-to-r from-blue-50 via-white to-purple-50 dark:from-blue-900/20 dark:via-background dark:to-purple-900/20 p-4 md:p-6">
-               <CardTitle className="text-xl md:text-2xl font-bold text-blue-700 dark:text-blue-300 flex items-center gap-2">
-                   <Edit className="h-6 w-6"/> Enter Student Marks
+       <Card className="shadow-lg dark:shadow-blue-900/20 overflow-hidden border-t-4 border-blue-500 rounded-xl bg-gradient-to-br from-blue-50/30 via-white to-purple-50/20 dark:from-blue-900/30 dark:via-background dark:to-purple-900/20 transition-all hover:shadow-xl">
+          <CardHeader className="p-4 md:p-6">
+               <CardTitle className="text-xl md:text-2xl font-bold text-blue-700 dark:text-blue-300 flex items-center gap-2 animate-fade-in-down">
+                   <Edit className="h-6 w-6 text-blue-500"/> Enter Student Marks
                </CardTitle>
-               <CardDescription className="text-muted-foreground mt-1">Select a previously saved test and enter the marks obtained by each student.</CardDescription>
+               <CardDescription className="text-muted-foreground mt-1 animate-fade-in-down animation-delay-100">Select a previously saved test and enter the marks obtained by each student.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 p-4 md:p-6">
               {/* Test Selection Dropdown */}
-               <div className="max-w-md">
-                 <Label htmlFor="markTestSelect" className="text-sm font-medium">Select Test to Enter Marks*</Label>
+               <div className="max-w-md animate-fade-in animation-delay-200">
+                 <Label htmlFor="markTestSelect" className="text-sm font-medium text-blue-800 dark:text-blue-200">Select Test to Enter Marks*</Label>
                   <Select value={selectedTestForMarks} onValueChange={setSelectedTestForMarks} disabled={!selectedClassId || !selectedSubjectId || availableTestsForMarks.length === 0} required>
-                       <SelectTrigger id="markTestSelect" className="mt-1 bg-background shadow-sm">
+                       <SelectTrigger id="markTestSelect" className="mt-1 bg-background shadow-sm focus:ring-2 focus:ring-blue-500 border-blue-200 dark:border-blue-800 hover:border-blue-400 dark:hover:border-blue-600 transition-colors">
                          <SelectValue placeholder="Select a saved test..." />
                        </SelectTrigger>
                        <SelectContent>
@@ -759,62 +875,85 @@ export function EnterMarks() {
 
                {/* Marks Table */}
                {selectedTestForMarks && studentsForMarkEntry.length > 0 && (
-                   <div className="space-y-4 pt-4 border-t">
+                   <div className="space-y-4 pt-6 border-t border-blue-200/50 dark:border-blue-800/50 animate-fade-in animation-delay-300">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                             <h3 className="font-semibold text-lg">
                                 Marks for: <span className="text-blue-600 dark:text-blue-400">{savedTests.find(t=>t.id===selectedTestForMarks)?.name}</span>
                                 <span className="text-muted-foreground text-sm ml-2">(Max: {savedTests.find(t=>t.id===selectedTestForMarks)?.totalMarks})</span>
                             </h3>
                             {/* Enhanced CSV Upload Button */}
-                             <Button variant="outline" size="sm" onClick={triggerCSVUpload} disabled={isSavingMarks} className="bg-gradient-to-r from-green-50 to-lime-50 hover:from-green-100 hover:to-lime-100 border-green-300 text-green-700 shadow-sm hover:shadow-md transition-all group">
+                             <Button variant="outline" size="sm" onClick={triggerCSVUpload} disabled={isSavingMarks} className="bg-gradient-to-r from-green-50 to-lime-50 hover:from-green-100 hover:to-lime-100 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 shadow-sm hover:shadow-md transition-all group">
                                 <FileSpreadsheet className="mr-2 h-4 w-4 group-hover:animate-pulse" /> Bulk Upload (CSV)
                             </Button>
                        </div>
-                       <div className="border rounded-md overflow-hidden shadow-sm">
+                       <div className="border border-blue-200 dark:border-blue-800 rounded-md overflow-hidden shadow-sm bg-background">
                          <Table>
-                             <TableHeader className="bg-muted/50 dark:bg-muted/20">
+                             <TableHeader className="bg-blue-50/50 dark:bg-blue-900/20">
                                 <TableRow>
-                                    <TableHead className="w-[80px] text-center font-semibold text-indigo-800 dark:text-indigo-300">Seat No.</TableHead> {/* Enhanced Header */}
-                                    <TableHead className="font-semibold">Student Name</TableHead>
-                                    <TableHead className="w-[150px] text-right font-semibold">Obtained Marks*</TableHead>
+                                    <TableHead className="w-[80px] text-center font-semibold text-blue-800 dark:text-blue-300">Roll No.</TableHead>
+                                    <TableHead className="font-semibold text-blue-800 dark:text-blue-300">Student Name</TableHead>
+                                    <TableHead className="w-[150px] text-center font-semibold text-blue-800 dark:text-blue-300">Obtained Marks*</TableHead>
+                                    <TableHead className="w-[150px] text-center font-semibold text-blue-800 dark:text-blue-300">Analysis</TableHead> {/* New Analysis Column */}
                                 </TableRow>
                              </TableHeader>
                              <TableBody>
-                                 {studentsForMarkEntry.map((student, index) => (
-                                     <TableRow key={student.id} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors duration-150">
-                                         {/* Seat Number Style */}
-                                         <TableCell className="font-mono text-center text-lg font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/30 border-r"> {/* Seat Style */}
-                                            {student.rollNo}
-                                          </TableCell>
-                                         <TableCell className="font-medium">{student.name}</TableCell>
-                                         <TableCell className="text-right">
-                                             <Input
-                                                 type="number"
-                                                 value={studentMarks[student.id] ?? ''}
-                                                 onChange={(e) => handleMarkChange(student.id, e.target.value)}
-                                                 min="0"
-                                                 max={savedTests.find(t=>t.id===selectedTestForMarks)?.totalMarks}
-                                                 className="text-right bg-background h-8 w-24 focus:ring-blue-500 dark:focus:ring-blue-400 border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 transition-colors" // Added focus ring color + border
-                                                 placeholder="Score"
-                                                 aria-label={`Marks for ${student.name}`} // Accessibility
-                                                 disabled={isSavingMarks}
-                                             />
-                                         </TableCell>
-                                     </TableRow>
-                                 ))}
+                                 {studentsForMarkEntry.map((student, index) => {
+                                     const analysis = analysisResults.find(r => r.studentId === student.id);
+                                     const analyzing = isAnalyzing[student.id];
+                                     return (
+                                         <TableRow key={student.id} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors duration-150 group"> {/* Add group class */}
+                                             {/* Roll Number Style */}
+                                             <TableCell className="font-mono text-center text-lg font-bold text-blue-600 dark:text-blue-400 bg-blue-50/20 dark:bg-blue-900/20 border-r border-blue-200 dark:border-blue-800">
+                                                {student.rollNo}
+                                             </TableCell>
+                                             <TableCell className="font-medium">{student.name}</TableCell>
+                                             <TableCell className="text-center">
+                                                 <Input
+                                                     type="number"
+                                                     value={studentMarks[student.id] ?? ''}
+                                                     onChange={(e) => handleMarkChange(student.id, e.target.value)}
+                                                     min="0"
+                                                     max={savedTests.find(t=>t.id===selectedTestForMarks)?.totalMarks}
+                                                     className="text-center bg-background h-8 w-24 focus:ring-blue-500 dark:focus:ring-blue-400 border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 transition-colors mx-auto"
+                                                     placeholder="Score"
+                                                     aria-label={`Marks for ${student.name}`} // Accessibility
+                                                     disabled={isSavingMarks}
+                                                 />
+                                             </TableCell>
+                                             <TableCell className="text-center">
+                                                 {analysis && (
+                                                    <Button variant="ghost" size="sm" onClick={() => handlePrintAnalysis(student.id)} title="Print Analysis">
+                                                         <Printer className="h-4 w-4 text-gray-500 hover:text-gray-700"/>
+                                                    </Button>
+                                                 )}
+                                                  <Button
+                                                     variant="ghost"
+                                                     size="sm"
+                                                     onClick={() => handleAnalyzeStudent(student)}
+                                                     disabled={analyzing || studentMarks[student.id] === '' || isSavingMarks}
+                                                     title={analyzing ? "Analyzing..." : "Analyze Student"}
+                                                     className="ml-1"
+                                                  >
+                                                      {analyzing ? <Loader2 className="h-4 w-4 animate-spin text-purple-500"/> : <Sparkles className="h-4 w-4 text-purple-500 hover:text-purple-700"/>}
+                                                  </Button>
+                                                  {/* Show tooltip with analysis on hover maybe? */}
+                                                 {analysis && <span className="text-xs text-muted-foreground ml-2">(Analyzed)</span>}
+                                             </TableCell>
+                                         </TableRow>
+                                     );
+                                 })}
                              </TableBody>
                          </Table>
                        </div>
-                       {/* Add buttons for per-student analysis/print later if needed */}
                    </div>
                )}
                 {selectedTestForMarks && studentsForMarkEntry.length === 0 && (
-                    <div className="text-center text-muted-foreground py-10 border-2 border-dashed border-muted rounded-lg bg-muted/20">
+                    <div className="text-center text-muted-foreground py-10 border-2 border-dashed border-blue-200 dark:border-blue-800 rounded-lg bg-blue-50/10 dark:bg-blue-900/10 animate-fade-in">
                         <p>No students found for the selected test's class/section.</p>
                     </div>
                 )}
                  {!selectedTestForMarks && (selectedClassId && selectedSubjectId) && (
-                    <div className="text-center text-muted-foreground py-10 border-2 border-dashed border-muted rounded-lg bg-muted/20">
+                    <div className="text-center text-muted-foreground py-10 border-2 border-dashed border-blue-200 dark:border-blue-800 rounded-lg bg-blue-50/10 dark:bg-blue-900/10 animate-fade-in">
                         <p className="font-medium">Select a saved test above</p>
                          <p className="text-sm">Choose a test from the dropdown to start entering marks for students.</p>
                     </div>
@@ -822,17 +961,9 @@ export function EnterMarks() {
 
           </CardContent>
            {selectedTestForMarks && studentsForMarkEntry.length > 0 && (
-               <CardFooter className="flex flex-col sm:flex-row justify-between items-center border-t pt-4 mt-6 p-4 md:p-6 bg-muted/30 dark:bg-muted/10">
-                   {/* Placeholder for future analysis/print buttons */}
-                    <div className="flex gap-2 mb-4 sm:mb-0">
-                        <Button variant="outline" size="sm" onClick={handlePrintAnalysis} disabled>
-                           <Printer className="mr-1 h-4 w-4"/> Print Analysis (Coming Soon)
-                        </Button>
-                         {/* <Button variant="outline" size="sm" disabled>
-                             <Sparkles className="mr-1 h-4 w-4"/> Run Analysis (Coming Soon)
-                         </Button> */}
-                    </div>
-                    <Button onClick={handleSaveMarks} disabled={isSavingMarks} size="lg" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto shadow-lg hover:shadow-blue-500/40 transition-all duration-300 transform hover:scale-105">
+               <CardFooter className="flex flex-col sm:flex-row justify-end items-center border-t border-blue-200 dark:border-blue-800 pt-4 mt-6 p-4 md:p-6 bg-blue-50/30 dark:bg-blue-900/20 rounded-b-xl">
+                    {/* Removed Print Analysis button from footer */}
+                    <Button onClick={handleSaveMarks} disabled={isSavingMarks} size="lg" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white w-full sm:w-auto shadow-lg hover:shadow-purple-500/40 transition-all duration-300 transform hover:scale-105 animate-fade-in">
                         {isSavingMarks ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                          Save Marks for This Test
                     </Button>
@@ -841,4 +972,30 @@ export function EnterMarks() {
       </Card>
     </div>
   );
+}
+
+// Helper styles for animation (add to globals.css or tailwind config if preferred)
+const animationStyles = `
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fade-in-down {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
+.animate-fade-in-down { animation: fade-in-down 0.5s ease-out forwards; }
+.animation-delay-100 { animation-delay: 100ms; }
+.animation-delay-200 { animation-delay: 200ms; }
+.animation-delay-300 { animation-delay: 300ms; }
+/* Add more delays as needed */
+`;
+
+// Inject styles (simple way, consider better approach for production)
+if (typeof window !== 'undefined') {
+    const styleSheet = document.createElement("style");
+    styleSheet.type = "text/css";
+    styleSheet.innerText = animationStyles;
+    document.head.appendChild(styleSheet);
 }

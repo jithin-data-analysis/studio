@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -27,11 +27,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User, Edit, Trash2, Search, Filter, Users } from 'lucide-react'; // Added Users icon
-import { type Student, type Class, type Section } from '@/types'; // Assuming types are defined
-import { StudentModal } from './student-modal'; // Re-use the modal
-import { useToast } from '@/hooks/use-toast'; // Import useToast
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'; // Import AlertDialog
+import { User, Edit, Trash2, Search, Filter, Users } from 'lucide-react';
+import { type Student, type Class, type Section } from '@/types';
+import { StudentModal } from './student-modal';
+import { useToast } from '@/hooks/use-toast';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 // Mock data - replace with API calls
 const mockClasses: Class[] = [
@@ -195,7 +195,7 @@ export function Students() {
 
         <div className="border rounded-md overflow-hidden shadow-sm"> {/* Added shadow */}
           <Table>
-            <TableHeader className="bg-muted/50"> {/* Styled header */}
+            <TableHeader className="bg-muted/50">
               <TableRow>
                 <TableHead className="w-[60px]">Photo</TableHead>
                 <TableHead>Name</TableHead>

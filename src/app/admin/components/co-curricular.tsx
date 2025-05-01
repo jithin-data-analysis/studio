@@ -168,7 +168,7 @@ export function CoCurricular() {
 
         <div className="border rounded-md overflow-hidden shadow-sm"> {/* Added shadow */}
           <Table>
-            <TableHeader className="bg-muted/50"> {/* Styled header */}
+            <TableHeader className="bg-muted/50">
               <TableRow>
                 <TableHead>Activity Name</TableHead>
                 <TableHead className="text-right w-[120px]">Actions</TableHead>
