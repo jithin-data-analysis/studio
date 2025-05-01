@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label'; // Import Label
-import { Loader2, Brain, Sparkles, AlertTriangle, FlaskConical, UserCheck, Users } from 'lucide-react';
+import { Loader2, Brain, Sparkles, AlertTriangle, FlaskConical, UserCheck, Users, TrendingUp, TrendingDown, Lightbulb, Clock } from 'lucide-react'; // Added more icons
 import { type Class, type Section, type Student, type Test, type Subject } from '@/types';
 import { generateStudentInsights } from '@/ai/flows/generate-student-insights';
 import { correlateCoCurricularActivities } from '@/ai/flows/correlate-co-curricular-activities'; // Import correlation flow
@@ -25,6 +25,7 @@ import { type GenerateStudentInsightsOutput } from '@/ai/flows/generate-student-
 import { type CorrelateCoCurricularActivitiesOutput } from '@/ai/flows/correlate-co-curricular-activities';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge'; // Import Badge
 
 // Mock Data (Replace with API calls)
 const mockClasses: Class[] = [
@@ -32,10 +33,10 @@ const mockClasses: Class[] = [
    { id: 'cls8', name: 'Grade 8', grade: 8, sections: [{ id: 'sec8a', name: 'A', classId: 'cls8', students: []}] },
 ];
 const mockStudents: Student[] = [
-    { id: 'stu1', name: 'Alice Wonder', rollNo: '101', dob: '2016-01-15', gender: 'Female', classId: 'cls1', sectionId: 'sec1a', coCurricularIds: ['act1']},
-    { id: 'stu2', name: 'Bob The Builder', rollNo: '102', dob: '2016-03-20', gender: 'Male', classId: 'cls1', sectionId: 'sec1a', coCurricularIds: []},
-    { id: 'stu4', name: 'Diana Prince', rollNo: '801', dob: '2009-05-05', gender: 'Female', classId: 'cls8', sectionId: 'sec8a', coCurricularIds: ['act1', 'act3']},
-    { id: 'stu5', name: 'Ethan Hunt', rollNo: '802', dob: '2009-07-12', gender: 'Male', classId: 'cls8', sectionId: 'sec8a', coCurricularIds: []},
+    { id: 'stu1', name: 'Alice Wonder', rollNo: '101', dob: '2016-01-15', gender: 'Female', classId: 'cls1', sectionId: 'sec1a', coCurricularIds: ['act1']} as Student,
+    { id: 'stu2', name: 'Bob The Builder', rollNo: '102', dob: '2016-03-20', gender: 'Male', classId: 'cls1', sectionId: 'sec1a', coCurricularIds: []} as Student,
+    { id: 'stu4', name: 'Diana Prince', rollNo: '801', dob: '2009-05-05', gender: 'Female', classId: 'cls8', sectionId: 'sec8a', coCurricularIds: ['act1', 'act3']} as Student,
+    { id: 'stu5', name: 'Ethan Hunt', rollNo: '802', dob: '2009-07-12', gender: 'Male', classId: 'cls8', sectionId: 'sec8a', coCurricularIds: []} as Student,
 ];
 const mockTests: Test[] = [
     { id: 'test1', classId: 'cls1', sectionId: 'sec1a', subjectId: 'sub1', teacherId: 't1', date: '2024-05-10', type: 'Unit Test', totalMarks: 20 },
@@ -83,6 +84,9 @@ export function PerformanceInsights() {
        setSelectedStudentId('');
        setStudentInsights(null);
        setInsightError(null);
+       // Don't reset correlation just because class changed for student view
+       // setCorrelationInsights(null);
+       // setCorrelationError(null);
    }, [selectedClassId]);
 
     useEffect(() => {
@@ -92,15 +96,15 @@ export function PerformanceInsights() {
    }, [selectedSectionId]);
 
     useEffect(() => {
-        setStudentInsights(null);
+        setStudentInsights(null); // Clear previous student's insights when selection changes
         setInsightError(null);
     }, [selectedStudentId])
 
-    // Reset correlation insights when class/term changes
+    // Reset correlation insights when class/term changes for the correlation section
     useEffect(() => {
         setCorrelationInsights(null);
         setCorrelationError(null);
-    }, [selectedClassId, selectedTerm]);
+    }, [selectedClassId, selectedTerm]); // Keep this dependency
 
 
   const handleFetchStudentInsights = async () => {
@@ -119,7 +123,9 @@ export function PerformanceInsights() {
       if (!student) throw new Error("Student not found");
 
       // Find the latest test for this student's class/section (example logic)
-      const relevantTests = mockTests.filter(t => t.classId === student.classId && (!t.sectionId || t.sectionId === student.sectionId)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const relevantTests = mockTests
+        .filter(t => t.classId === student.classId && (!t.sectionId || t.sectionId === student.sectionId))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       const lastTest = relevantTests[0];
 
       if (!lastTest) {
@@ -130,13 +136,15 @@ export function PerformanceInsights() {
 
       const markData = (mockMarks as any)[`${student.id}_${lastTest.id}`];
       const subject = mockSubjects.find(s => s.id === lastTest.subjectId);
-      const historicalContext = "Previous scores: 70, 75, 68"; // Example context
+      const historicalContext = "Previous scores in Math: 70%, 75%, 68%"; // Example context - fetch real data
 
        if (!markData || !subject) {
-           setInsightError("Could not find complete test or mark data for the latest test.");
+           setInsightError("Could not find complete mark or subject data for the latest test.");
             setIsLoadingInsights(false);
            return;
        }
+
+       toast({ title: "Generating Insights...", description: `Fetching AI analysis for ${student.name}.` });
 
       const result = await generateStudentInsights({
           studentId: student.id,
@@ -149,11 +157,13 @@ export function PerformanceInsights() {
           historicalContext: historicalContext, // Add actual historical context fetching
       });
       setStudentInsights(result);
+      toast({ title: "Insights Generated", description: `Analysis complete for ${student.name}.` });
 
     } catch (error: any) {
       console.error("Failed to fetch student insights:", error);
-      setInsightError(error.message || "An unexpected error occurred while fetching insights.");
-      toast({ title: "Error", description: "Could not fetch student insights.", variant: "destructive" });
+      const errorMsg = error.message || "An unexpected error occurred while fetching insights.";
+      setInsightError(errorMsg);
+      toast({ title: "Error Fetching Insights", description: errorMsg, variant: "destructive" });
     } finally {
       setIsLoadingInsights(false);
     }
@@ -168,16 +178,23 @@ export function PerformanceInsights() {
      setCorrelationInsights(null);
      setCorrelationError(null);
 
+     toast({ title: "Analyzing Correlation...", description: `Fetching AI analysis for ${mockClasses.find(c=>c.id===selectedClassId)?.name} (${selectedTerm}).` });
+
      try {
+         // Simulate API call delay
+         await new Promise(resolve => setTimeout(resolve, 1500));
         const result = await correlateCoCurricularActivities({
             classId: selectedClassId,
             term: selectedTerm
         });
         setCorrelationInsights(result);
+        toast({ title: "Correlation Analysis Complete", description: `Insights generated for ${mockClasses.find(c=>c.id===selectedClassId)?.name}.` });
+
      } catch (error: any) {
          console.error("Failed to fetch correlation insights:", error);
-         setCorrelationError(error.message || "An unexpected error occurred while fetching correlation insights.");
-         toast({ title: "Error", description: "Could not fetch correlation insights.", variant: "destructive" });
+         const errorMsg = error.message || "An unexpected error occurred while fetching correlation insights.";
+         setCorrelationError(errorMsg);
+         toast({ title: "Correlation Analysis Failed", description: errorMsg, variant: "destructive" });
      } finally {
          setIsLoadingCorrelation(false);
      }
@@ -187,19 +204,20 @@ export function PerformanceInsights() {
   return (
     <div className="space-y-6">
         {/* Per-Student Insights */}
-        <Card>
+        <Card className="shadow-md dark:shadow-indigo-900/10"> {/* Added shadow */}
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><UserCheck /> Per-Student Performance Insights</CardTitle>
             <CardDescription>
-              Select a student to view AI-generated trends, weaknesses, tips, and predictions based on their recent performance.
+              Select a student to view AI-generated trends, weaknesses, tips, and predictions based on their recent performance and historical data.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-col md:flex-row gap-4">
+             {/* Selection Filters */}
+            <div className="flex flex-col md:flex-row gap-4 p-4 border rounded-lg bg-muted/30 items-end">
               <div className="flex-1">
-                <Label htmlFor="insightClass">Class</Label>
+                <Label htmlFor="insightClass" className="text-xs font-semibold uppercase text-muted-foreground">Class</Label>
                  <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-                   <SelectTrigger id="insightClass">
+                   <SelectTrigger id="insightClass" className="bg-background">
                      <SelectValue placeholder="Select Class" />
                    </SelectTrigger>
                    <SelectContent>
@@ -210,9 +228,9 @@ export function PerformanceInsights() {
                  </Select>
               </div>
               <div className="flex-1">
-                 <Label htmlFor="insightSection">Section</Label>
+                 <Label htmlFor="insightSection" className="text-xs font-semibold uppercase text-muted-foreground">Section</Label>
                  <Select value={selectedSectionId} onValueChange={setSelectedSectionId} disabled={!selectedClassId || availableSections.length === 0}>
-                   <SelectTrigger id="insightSection">
+                   <SelectTrigger id="insightSection" className="bg-background">
                      <SelectValue placeholder="Select Section" />
                    </SelectTrigger>
                    <SelectContent>
@@ -227,9 +245,9 @@ export function PerformanceInsights() {
                  </Select>
               </div>
               <div className="flex-1">
-                 <Label htmlFor="insightStudent">Student</Label>
+                 <Label htmlFor="insightStudent" className="text-xs font-semibold uppercase text-muted-foreground">Student</Label>
                  <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={!selectedSectionId || availableStudents.length === 0}>
-                   <SelectTrigger id="insightStudent">
+                   <SelectTrigger id="insightStudent" className="bg-background">
                      <SelectValue placeholder="Select Student" />
                    </SelectTrigger>
                    <SelectContent>
@@ -243,70 +261,84 @@ export function PerformanceInsights() {
                    </SelectContent>
                  </Select>
               </div>
-               <Button onClick={handleFetchStudentInsights} disabled={!selectedStudentId || isLoadingInsights} className="self-end mt-4 md:mt-0">
+               <Button onClick={handleFetchStudentInsights} disabled={!selectedStudentId || isLoadingInsights} className="self-end mt-4 md:mt-0 shrink-0">
                 {isLoadingInsights ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                 Get Insights
               </Button>
             </div>
 
-             {insightError && <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{insightError}</p>}
+             {/* Error Display */}
+             {insightError && !isLoadingInsights && (
+                 <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive border border-destructive/30">
+                     <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0"/>
+                     <p className="text-sm font-medium">{insightError}</p>
+                 </div>
+             )}
 
+             {/* Loading State */}
             {isLoadingInsights && (
-                <div className="space-y-4 pt-4">
-                    <Skeleton className="h-4 w-1/3" />
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-3/4" />
-                     <Skeleton className="h-4 w-1/3 mt-4" />
-                    <Skeleton className="h-4 w-full" />
-                     <Skeleton className="h-4 w-1/3 mt-4" />
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-1/2" />
+                <div className="space-y-5 pt-4 border-t mt-4">
+                     <Skeleton className="h-6 w-3/5 mb-3" />
+                     {[...Array(4)].map((_, i) => (
+                         <div key={i} className="space-y-2">
+                             <Skeleton className="h-4 w-1/4" />
+                             <Skeleton className="h-4 w-full" />
+                             {i % 2 === 0 && <Skeleton className="h-4 w-4/5" />}
+                         </div>
+                    ))}
                 </div>
             )}
 
+             {/* Insights Display */}
             {studentInsights && !isLoadingInsights && (
-              <div className="space-y-4 pt-4 border-t mt-4">
-                <h4 className="font-semibold text-lg">Insights for {mockStudents.find(s => s.id === selectedStudentId)?.name}</h4>
-                <div>
-                  <h5 className="font-medium mb-1">Performance Trends:</h5>
-                  <p className="text-sm text-muted-foreground">{studentInsights.trends}</p>
+              <div className="space-y-5 pt-4 border-t mt-4">
+                <h4 className="font-semibold text-lg text-primary">Insights for {mockStudents.find(s => s.id === selectedStudentId)?.name}</h4>
+                <div className="border-l-4 border-blue-500 pl-3">
+                  <h5 className="font-medium mb-1 flex items-center gap-1.5 text-sm uppercase text-muted-foreground"><TrendingUp size={16} /> Performance Trends:</h5>
+                  <p className="text-sm">{studentInsights.trends || <span className="italic text-muted-foreground/70">No trend data available.</span>}</p>
                 </div>
-                <div>
-                  <h5 className="font-medium mb-1 text-orange-600 flex items-center gap-1"><AlertTriangle size={16} /> Identified Weaknesses:</h5>
-                  <p className="text-sm text-muted-foreground">{studentInsights.weaknesses}</p>
+                <div className="border-l-4 border-orange-500 pl-3">
+                  <h5 className="font-medium mb-1 text-orange-600 flex items-center gap-1.5 text-sm uppercase"><AlertTriangle size={16} /> Identified Weaknesses:</h5>
+                  <p className="text-sm">{studentInsights.weaknesses || <span className="italic text-muted-foreground/70">No specific weaknesses identified.</span>}</p>
                 </div>
-                <div>
-                  <h5 className="font-medium mb-1 text-accent flex items-center gap-1"><Brain size={16} /> Personalized Tips:</h5>
-                  <p className="text-sm text-muted-foreground">{studentInsights.personalizedTips}</p>
+                <div className="border-l-4 border-teal-500 pl-3">
+                  <h5 className="font-medium mb-1 text-accent flex items-center gap-1.5 text-sm uppercase"><Lightbulb size={16} /> Personalized Tips:</h5>
+                  <p className="text-sm">{studentInsights.personalizedTips || <span className="italic text-muted-foreground/70">No personalized tips available currently.</span>}</p>
                 </div>
-                 <div>
-                  <h5 className="font-medium mb-1">Predictive Outcomes:</h5>
-                  <p className="text-sm text-muted-foreground">{studentInsights.predictiveOutcomes}</p>
+                 <div className="border-l-4 border-purple-500 pl-3">
+                  <h5 className="font-medium mb-1 flex items-center gap-1.5 text-sm uppercase text-muted-foreground"><Clock size={16} /> Predictive Outcomes:</h5>
+                  <p className="text-sm">{studentInsights.predictiveOutcomes || <span className="italic text-muted-foreground/70">Prediction not available.</span>}</p>
                 </div>
               </div>
             )}
 
+             {/* Empty State */}
              {!selectedStudentId && !isLoadingInsights && !insightError && (
-                 <p className="text-center text-muted-foreground pt-4">Select a student to view insights.</p>
+                 <div className="text-center text-muted-foreground py-10 border-2 border-dashed border-muted rounded-lg">
+                    <UserCheck className="mx-auto h-10 w-10 text-muted-foreground/50 mb-2"/>
+                    <p>Select a student to generate AI-powered performance insights.</p>
+                 </div>
              )}
 
           </CardContent>
         </Card>
 
          {/* Co-Curricular Correlation */}
-         <Card>
+         <Card className="shadow-md dark:shadow-indigo-900/10"> {/* Added shadow */}
             <CardHeader>
-                 <CardTitle className="flex items-center gap-2"><Users /> Co-Curricular Correlation</CardTitle>
+                 <CardTitle className="flex items-center gap-2"><FlaskConical /> Co-Curricular Correlation</CardTitle>
                  <CardDescription>
                      Analyze the correlation between co-curricular activities and academic performance for a selected class and term.
                  </CardDescription>
             </CardHeader>
              <CardContent className="space-y-4">
-                 <div className="flex flex-col md:flex-row gap-4">
+                  {/* Selection Filters */}
+                 <div className="flex flex-col md:flex-row gap-4 p-4 border rounded-lg bg-muted/30 items-end">
                      <div className="flex-1">
-                         <Label htmlFor="correlationClass">Class</Label>
+                         <Label htmlFor="correlationClass" className="text-xs font-semibold uppercase text-muted-foreground">Class</Label>
+                         {/* Reusing selectedClassId state from above, consider if separate state is needed if classes differ */}
                          <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-                             <SelectTrigger id="correlationClass">
+                             <SelectTrigger id="correlationClass" className="bg-background">
                                  <SelectValue placeholder="Select Class" />
                              </SelectTrigger>
                              <SelectContent>
@@ -317,59 +349,73 @@ export function PerformanceInsights() {
                          </Select>
                      </div>
                       <div className="flex-1">
-                         <Label htmlFor="correlationTerm">Term</Label>
+                         <Label htmlFor="correlationTerm" className="text-xs font-semibold uppercase text-muted-foreground">Term</Label>
                          {/* In real app, terms might come from DB or config */}
                          <Select value={selectedTerm} onValueChange={setSelectedTerm}>
-                             <SelectTrigger id="correlationTerm">
+                             <SelectTrigger id="correlationTerm" className="bg-background">
                                  <SelectValue placeholder="Select Term" />
                              </SelectTrigger>
                              <SelectContent>
                                  <SelectItem value="Fall 2024">Fall 2024</SelectItem>
                                  <SelectItem value="Spring 2024">Spring 2024</SelectItem>
                                  <SelectItem value="Fall 2023">Fall 2023</SelectItem>
+                                  {/* Add more terms as needed */}
                              </SelectContent>
                          </Select>
                      </div>
-                      <Button onClick={handleFetchCorrelationInsights} disabled={!selectedClassId || !selectedTerm || isLoadingCorrelation} className="self-end mt-4 md:mt-0">
-                         {isLoadingCorrelation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FlaskConical className="mr-2 h-4 w-4" />}
+                      <Button onClick={handleFetchCorrelationInsights} disabled={!selectedClassId || !selectedTerm || isLoadingCorrelation} className="self-end mt-4 md:mt-0 shrink-0">
+                         {isLoadingCorrelation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                          Analyze Correlation
                      </Button>
                  </div>
 
-                 {correlationError && <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{correlationError}</p>}
+                  {/* Error Display */}
+                 {correlationError && !isLoadingCorrelation && (
+                    <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive border border-destructive/30">
+                        <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0"/>
+                        <p className="text-sm font-medium">{correlationError}</p>
+                    </div>
+                 )}
 
+                  {/* Loading State */}
                   {isLoadingCorrelation && (
-                     <div className="space-y-4 pt-4">
-                         <Skeleton className="h-4 w-1/4" />
-                         <Skeleton className="h-4 w-full" />
-                          <Skeleton className="h-4 w-1/4 mt-4" />
-                         <Skeleton className="h-4 w-3/4" />
-                          <Skeleton className="h-4 w-1/4 mt-4" />
-                         <Skeleton className="h-4 w-full" />
-                         <Skeleton className="h-4 w-1/2" />
+                     <div className="space-y-5 pt-4 border-t mt-4">
+                          <Skeleton className="h-6 w-2/5 mb-3" />
+                          {[...Array(3)].map((_, i) => (
+                             <div key={i} className="space-y-2">
+                                 <Skeleton className="h-4 w-1/5" />
+                                 <Skeleton className="h-4 w-full" />
+                                 {i % 2 !== 0 && <Skeleton className="h-4 w-3/4" />}
+                             </div>
+                        ))}
                      </div>
                  )}
 
+                 {/* Insights Display */}
                  {correlationInsights && !isLoadingCorrelation && (
-                     <div className="space-y-4 pt-4 border-t mt-4">
-                         <h4 className="font-semibold text-lg">Correlation Insights for {mockClasses.find(c=>c.id===selectedClassId)?.name} ({selectedTerm})</h4>
-                          <div>
-                             <h5 className="font-medium mb-1">Balance Check:</h5>
-                             <p className="text-sm text-muted-foreground">{correlationInsights.balanceCheck}</p>
+                     <div className="space-y-5 pt-4 border-t mt-4">
+                         <h4 className="font-semibold text-lg text-primary">Correlation Insights for {mockClasses.find(c=>c.id===selectedClassId)?.name} ({selectedTerm})</h4>
+                          <div className="border-l-4 border-blue-500 pl-3">
+                             <h5 className="font-medium mb-1 flex items-center gap-1.5 text-sm uppercase text-muted-foreground"><TrendingUp size={16} /> Balance Check:</h5>
+                             <p className="text-sm">{correlationInsights.balanceCheck || <span className="italic text-muted-foreground/70">No specific balance checks available.</span>}</p>
                          </div>
-                         <div>
-                             <h5 className="font-medium mb-1 text-orange-600 flex items-center gap-1"><AlertTriangle size={16} /> Risk Flags:</h5>
-                             <p className="text-sm text-muted-foreground">{correlationInsights.riskFlags}</p>
+                         <div className="border-l-4 border-orange-500 pl-3">
+                             <h5 className="font-medium mb-1 text-orange-600 flex items-center gap-1.5 text-sm uppercase"><AlertTriangle size={16} /> Risk Flags:</h5>
+                             <p className="text-sm">{correlationInsights.riskFlags || <span className="italic text-muted-foreground/70">No significant risk flags identified.</span>}</p>
                          </div>
-                          <div>
-                             <h5 className="font-medium mb-1 text-accent flex items-center gap-1"><Brain size={16} /> Suggestions:</h5>
-                             <p className="text-sm text-muted-foreground">{correlationInsights.suggestions}</p>
+                          <div className="border-l-4 border-teal-500 pl-3">
+                             <h5 className="font-medium mb-1 text-accent flex items-center gap-1.5 text-sm uppercase"><Lightbulb size={16} /> Suggestions:</h5>
+                             <p className="text-sm">{correlationInsights.suggestions || <span className="italic text-muted-foreground/70">No specific suggestions available.</span>}</p>
                          </div>
                      </div>
                  )}
 
+                  {/* Empty State */}
                   {(!selectedClassId || !selectedTerm) && !isLoadingCorrelation && !correlationError && ( // Adjusted condition
-                    <p className="text-center text-muted-foreground pt-4">Select a class and term to analyze co-curricular correlations.</p>
+                      <div className="text-center text-muted-foreground py-10 border-2 border-dashed border-muted rounded-lg">
+                          <FlaskConical className="mx-auto h-10 w-10 text-muted-foreground/50 mb-2"/>
+                          <p>Select a class and term to analyze co-curricular correlations.</p>
+                      </div>
                  )}
 
              </CardContent>

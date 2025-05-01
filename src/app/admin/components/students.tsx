@@ -148,7 +148,7 @@ export function Students() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <div className="flex flex-col md:flex-row gap-4 mb-6 p-4 border rounded-lg bg-muted/30 items-end">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -159,7 +159,7 @@ export function Students() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap md:flex-nowrap"> {/* Allow wrapping on smaller screens */}
              <Filter className="h-5 w-5 text-muted-foreground mt-2 mr-1 hidden md:block" />
              <Select value={filterClassId} onValueChange={setFilterClassId}>
                <SelectTrigger className="w-full md:w-[160px]">
@@ -187,7 +187,7 @@ export function Students() {
           </div>
         </div>
 
-        <div className="border rounded-md">
+        <div className="border rounded-md overflow-hidden"> {/* Added overflow-hidden */}
           <Table>
             <TableHeader>
               <TableRow>
@@ -210,7 +210,7 @@ export function Students() {
                   </TableRow>
               )}
               {filteredStudents.map((student) => (
-                <TableRow key={student.id}>
+                <TableRow key={student.id} className="hover:bg-muted/50 transition-colors"> {/* Added hover effect */}
                   <TableCell>
                     <Avatar className="h-9 w-9">
                       <AvatarImage src={student.photoUrl} alt={student.name} />
@@ -224,14 +224,14 @@ export function Students() {
                   <TableCell>{student.dob}</TableCell>
                   <TableCell>{student.gender}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(student)}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" onClick={() => handleEdit(student)}> {/* Added hover color */}
                       <Edit className="h-4 w-4" />
                        <span className="sr-only">Edit Student</span>
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 ml-1"
+                      className="h-8 w-8 text-destructive hover:bg-destructive/10 ml-1"
                       onClick={() => handleRemove(student.id)}
                     >
                       <Trash2 className="h-4 w-4" />

@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input'; // For date range later
 import { Label } from '@/components/ui/label';
-import { BarChart, LineChart, TrendingDown, TrendingUp, Users, Filter } from 'lucide-react';
+import { BarChart, LineChart, TrendingDown, TrendingUp, Users, Filter, BookOpen, CalendarIcon } from 'lucide-react'; // Added icons
 import {
     ChartContainer,
     ChartTooltip,
@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/chart";
 import { Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 import { type Class, type Section, type Subject, type Test, type Mark, type Student } from '@/types';
+import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
 
 // Mock Data (replace with actual data fetching and aggregation logic)
 const mockClasses: Class[] = [
@@ -79,7 +80,7 @@ const mockStudents: Student[] = [
 
 // Helper to calculate average for a set of marks and total
 const calculateAverage = (marks: { obtainedMarks: number }[], totalMarks: number): number | null => {
-    if (marks.length === 0 || totalMarks <= 0) return null;
+    if (!marks || marks.length === 0 || totalMarks <= 0) return null;
     const sum = marks.reduce((acc, mark) => acc + mark.obtainedMarks, 0);
     return parseFloat(((sum / marks.length / totalMarks) * 100).toFixed(1)); // Return average percentage
 };
@@ -88,30 +89,45 @@ export function ClassReports() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
   const [selectedTestTypeId, setSelectedTestTypeId] = useState<string>('all'); // Filter by test type
+  const [isLoading, setIsLoading] = useState(false); // Added loading state
   // Add date range filters later
+  // const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
   const availableSubjects = useMemo(() => {
       if (!selectedClassId) return [];
-      // Add 'All Subjects' option
       const subjectsForClass = mockSubjects.filter(s => s.classId === selectedClassId);
-      if (subjectsForClass.length === 0) return []; // Return empty if no subjects for the class
-      return [{ id: 'all', name: 'All Subjects', classId: selectedClassId }, ...subjectsForClass];
+      // Ensure 'all' has a valid, non-empty value like 'all-subjects'
+      return [{ id: 'all-subjects', name: 'All Subjects', classId: selectedClassId }, ...subjectsForClass];
   }, [selectedClassId]);
 
    const availableTestTypes = useMemo(() => {
        if (!selectedClassId) return [];
-       // Get unique test types for the selected class
        const types = new Set(mockTests.filter(t => t.classId === selectedClassId).map(t => t.type));
-       const uniqueTypes = Array.from(types).filter(type => type); // Filter out empty strings if any
-        // Ensure 'all' has a valid non-empty value
-       return ['all', ...uniqueTypes];
+       const uniqueTypes = Array.from(types).filter(type => type);
+        // Ensure 'all' has a valid non-empty value like 'all-types'
+       return ['all-types', ...uniqueTypes];
    }, [selectedClassId]);
 
    // Reset filters when class changes
    useEffect(() => {
-       setSelectedSubjectId('all');
-       setSelectedTestTypeId('all');
+       setSelectedSubjectId('all-subjects'); // Use the non-empty value
+       setSelectedTestTypeId('all-types'); // Use the non-empty value
+       // Clear data or set loading state when class changes
+       setIsLoading(true);
+       // Simulate fetching data for the new class
+       const timer = setTimeout(() => setIsLoading(false), 500);
+       return () => clearTimeout(timer);
    }, [selectedClassId]);
+
+    // Set loading state when filters change
+    useEffect(() => {
+      if (selectedClassId) { // Only trigger loading if a class is selected
+        setIsLoading(true);
+        // Simulate fetching data based on filters
+        const timer = setTimeout(() => setIsLoading(false), 300);
+        return () => clearTimeout(timer);
+      }
+    }, [selectedSubjectId, selectedTestTypeId]);
 
 
   // --- Chart Data Calculations ---
@@ -122,57 +138,57 @@ export function ClassReports() {
 
       const subjectsInClass = mockSubjects.filter(s => s.classId === selectedClassId);
       return subjectsInClass.map(subject => {
-          const testsForSubject = mockTests.filter(t => t.classId === selectedClassId && t.subjectId === subject.id && (selectedTestTypeId === 'all' || t.type === selectedTestTypeId));
+          const testsForSubject = mockTests.filter(t => t.classId === selectedClassId && t.subjectId === subject.id && (selectedTestTypeId === 'all-types' || t.type === selectedTestTypeId)); // Use 'all-types'
           const marksForSubjectTests = mockMarks.filter(m => testsForSubject.some(t => t.id === m.testId));
-          const totalPossibleMarks = testsForSubject.reduce((sum, t) => sum + (t.totalMarks * (mockStudents.filter(st => st.classId === selectedClassId && (!t.sectionId || st.sectionId === t.sectionId)).length || 1)), 0); // Rough estimate
-          const totalObtainedMarks = marksForSubjectTests.reduce((sum, m) => sum + m.obtainedMarks, 0);
+          const studentsInSection = mockStudents.filter(st => st.classId === selectedClassId); // Consider all students in class for avg
+
+          // Calculate average percentage more accurately
+          const testAverages = testsForSubject.map(test => {
+              const marksForTest = marksForSubjectTests.filter(m => m.testId === test.id);
+              // Filter marks based on students actually in the section if test is section-specific
+              const relevantMarks = test.sectionId
+                    ? marksForTest.filter(m => studentsInSection.some(st => st.id === m.studentId && st.sectionId === test.sectionId))
+                    : marksForTest;
+              return calculateAverage(relevantMarks, test.totalMarks);
+          }).filter(avg => avg !== null) as number[];
 
           let averagePercent = null;
-           if (totalPossibleMarks > 0) {
-               // More accurate avg: Avg of avg test scores for this subject
-                const testAverages = testsForSubject.map(test => {
-                    const marksForTest = marksForSubjectTests.filter(m => m.testId === test.id);
-                    return calculateAverage(marksForTest, test.totalMarks);
-                }).filter(avg => avg !== null) as number[];
-
-                if (testAverages.length > 0) {
-                    averagePercent = parseFloat((testAverages.reduce((sum, avg) => sum + avg, 0) / testAverages.length).toFixed(1));
-                }
-           }
-
+          if (testAverages.length > 0) {
+              averagePercent = parseFloat((testAverages.reduce((sum, avg) => sum + avg, 0) / testAverages.length).toFixed(1));
+          }
 
           return {
               subject: subject.name,
               average: averagePercent,
           };
-      }).filter(d => d.average !== null); // Filter out subjects with no data for the filters
+      }).filter(d => d.average !== null);
 
   }, [selectedClassId, selectedTestTypeId]);
 
   // 2. Section A vs B Comparison (for selected class, subject, and test type)
-  // Returns an object { data: [], subjectName: "" } or null
   const sectionComparisonData = useMemo(() => {
-      if (!selectedClassId || selectedSubjectId === 'all') return null; // Return null if no specific subject
+      if (!selectedClassId || selectedSubjectId === 'all-subjects') return null; // Use 'all-subjects'
 
        const cls = mockClasses.find(c => c.id === selectedClassId);
-       if (!cls) return null; // Return null if class not found
+       if (!cls || cls.sections.length < 2) return null; // Only compare if 2+ sections exist
 
        const subjectName = mockSubjects.find(s => s.id === selectedSubjectId)?.name || '';
 
-       // Find tests matching the criteria
         const relevantTests = mockTests.filter(t =>
             t.classId === selectedClassId &&
             t.subjectId === selectedSubjectId &&
-            (selectedTestTypeId === 'all' || t.type === selectedTestTypeId)
+            (selectedTestTypeId === 'all-types' || t.type === selectedTestTypeId) // Use 'all-types'
         );
 
-        if(relevantTests.length === 0) return { data: [], subjectName }; // Return object with empty data if no tests found
+        if(relevantTests.length === 0) return { data: [], subjectName };
 
-
-       // Group tests by type/date if needed, for now just average over all matching tests
        const comparison = cls.sections.map(section => {
-           const sectionTests = relevantTests.filter(t => !t.sectionId || t.sectionId === section.id); // Tests for this section
-           const marksForSectionTests = mockMarks.filter(m => sectionTests.some(t => t.testId === m.testId) && mockStudents.some(st => st.id === m.studentId && st.sectionId === section.id));
+           const sectionTests = relevantTests.filter(t => !t.sectionId || t.sectionId === section.id);
+           const studentsInSection = mockStudents.filter(st => st.classId === cls.id && st.sectionId === section.id);
+           const marksForSectionTests = mockMarks.filter(m =>
+                sectionTests.some(t => t.testId === m.testId) &&
+                studentsInSection.some(st => st.id === m.studentId) // Ensure mark belongs to a student in this section
+            );
 
            const testAverages = sectionTests.map(test => {
                 const marksForTest = marksForSectionTests.filter(m => m.testId === test.id);
@@ -188,11 +204,10 @@ export function ClassReports() {
                section: `Section ${section.name}`,
                average: averagePercent,
            };
-       }).filter(d => d.average !== null); // Filter out sections with no data
+       }).filter(d => d.average !== null);
 
 
        return { data: comparison, subjectName };
-
 
   }, [selectedClassId, selectedSubjectId, selectedTestTypeId]);
 
@@ -203,8 +218,8 @@ export function ClassReports() {
 
         const relevantTests = mockTests.filter(t =>
             t.classId === selectedClassId &&
-            (selectedSubjectId === 'all' || t.subjectId === selectedSubjectId) &&
-            (selectedTestTypeId === 'all' || t.type === selectedTestTypeId)
+            (selectedSubjectId === 'all-subjects' || t.subjectId === selectedSubjectId) && // Use 'all-subjects'
+            (selectedTestTypeId === 'all-types' || t.type === selectedTestTypeId) // Use 'all-types'
         );
 
         if (relevantTests.length === 0) return { top: [], bottom: [] };
@@ -213,17 +228,19 @@ export function ClassReports() {
         const studentsInClass = mockStudents.filter(s => s.classId === selectedClassId);
 
         studentsInClass.forEach(student => {
-            const studentTestIds = relevantTests.filter(t => !t.sectionId || t.sectionId === student.sectionId).map(t => t.id);
-            const studentMarks = mockMarks.filter(m => m.studentId === student.id && studentTestIds.includes(m.testId));
+             // Find tests relevant to this student (either class-wide or specific to their section)
+             const studentTestIds = relevantTests.filter(t => !t.sectionId || t.sectionId === student.sectionId).map(t => t.id);
+             const studentMarks = mockMarks.filter(m => m.studentId === student.id && studentTestIds.includes(m.testId));
 
              let totalObtained = 0;
              let totalPossible = 0;
               studentMarks.forEach(mark => {
-                 const test = relevantTests.find(t => t.id === mark.testId);
-                 if (test) {
+                  // Find the original test definition to get totalMarks
+                  const test = relevantTests.find(t => t.id === mark.testId);
+                  if (test && test.totalMarks > 0) { // Ensure totalMarks is valid
                      totalObtained += mark.obtainedMarks;
                      totalPossible += test.totalMarks;
-                 }
+                  }
              });
 
              if (totalPossible > 0) {
@@ -240,7 +257,7 @@ export function ClassReports() {
 
        return {
            top: studentAverages.slice(0, 5),
-           bottom: studentAverages.slice(-5).reverse(), // Bottom 5, reversed to show lowest first
+           bottom: studentAverages.slice(-5).sort((a, b) => a.averagePercent - b.averagePercent), // Bottom 5, sorted lowest first
        };
 
    }, [selectedClassId, selectedSubjectId, selectedTestTypeId]);
@@ -254,22 +271,27 @@ export function ClassReports() {
      bottom: { label: "Bottom Scorers (%)", color: "hsl(var(--chart-5))" },
   } satisfies import("@/components/ui/chart").ChartConfig;
 
+  const selectedClassName = mockClasses.find(c => c.id === selectedClassId)?.name || 'N/A';
+  const selectedSubjectName = selectedSubjectId === 'all-subjects' ? 'All Subjects' : mockSubjects.find(s => s.id === selectedSubjectId)?.name || 'N/A';
+  const selectedTestTypeName = selectedTestTypeId === 'all-types' ? 'All Types' : selectedTestTypeId;
+
+
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="shadow-md dark:shadow-indigo-900/10"> {/* Added shadow */}
         <CardHeader>
-          <CardTitle>Class Reports</CardTitle>
+          <CardTitle>Class Performance Reports</CardTitle>
           <CardDescription>
-            View aggregated performance data for classes and sections. Apply filters to refine the reports.
+            View aggregated performance data. Use filters to refine charts and lists. Data is based on entered marks.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-4 mb-6 p-4 border rounded-lg bg-muted/30 items-end">
+          <div className="flex flex-col md:flex-row gap-4 mb-8 p-4 border rounded-lg bg-muted/30 items-end"> {/* Increased margin */}
             <div className="flex-1 grid gap-1.5">
-              <Label htmlFor="reportClass">Class</Label>
+              <Label htmlFor="reportClass" className="text-xs font-semibold uppercase text-muted-foreground">Class</Label>
                <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-                 <SelectTrigger id="reportClass">
+                 <SelectTrigger id="reportClass" className="bg-background">
                    <SelectValue placeholder="Select Class" />
                  </SelectTrigger>
                  <SelectContent>
@@ -280,9 +302,9 @@ export function ClassReports() {
                </Select>
             </div>
              <div className="flex-1 grid gap-1.5">
-               <Label htmlFor="reportSubject">Subject</Label>
+               <Label htmlFor="reportSubject" className="text-xs font-semibold uppercase text-muted-foreground">Subject</Label>
                 <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} disabled={!selectedClassId || availableSubjects.length === 0}>
-                 <SelectTrigger id="reportSubject">
+                 <SelectTrigger id="reportSubject" className="bg-background">
                    <SelectValue placeholder="Select Subject" />
                  </SelectTrigger>
                  <SelectContent>
@@ -293,15 +315,16 @@ export function ClassReports() {
                </Select>
             </div>
              <div className="flex-1 grid gap-1.5">
-               <Label htmlFor="reportTestType">Test Type</Label>
-               <Select value={selectedTestTypeId} onValueChange={setSelectedTestTypeId} disabled={!selectedClassId}>
-                 <SelectTrigger id="reportTestType">
+               <Label htmlFor="reportTestType" className="text-xs font-semibold uppercase text-muted-foreground">Test Type</Label>
+               <Select value={selectedTestTypeId} onValueChange={setSelectedTestTypeId} disabled={!selectedClassId || availableTestTypes.length <= 1}>
+                 <SelectTrigger id="reportTestType" className="bg-background">
                    <SelectValue placeholder="Select Test Type" />
                  </SelectTrigger>
                  <SelectContent>
-                    <SelectItem value="all">All Test Types</SelectItem>
-                     {availableTestTypes.slice(1).map(type => ( // slice(1) to skip 'all'
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                     {availableTestTypes.map(type => (
+                        <SelectItem key={type} value={type}>
+                            {type === 'all-types' ? 'All Test Types' : type}
+                         </SelectItem>
                      ))}
                  </SelectContent>
                </Select>
@@ -312,35 +335,65 @@ export function ClassReports() {
              </Button> */}
           </div>
 
-           {!selectedClassId && <p className="text-center text-muted-foreground">Please select a class to view reports.</p>}
+           {/* Empty State */}
+           {!selectedClassId && (
+               <div className="text-center text-muted-foreground py-16 border-2 border-dashed border-muted rounded-lg">
+                   <BarChart className="mx-auto h-12 w-12 text-muted-foreground/50 mb-3"/>
+                   <p className="font-medium">Please select a class to view reports.</p>
+                   <p className="text-sm">Apply filters for Subject and Test Type for more specific insights.</p>
+               </div>
+           )}
 
-          {/* Charts */}
-          {selectedClassId && (
+           {/* Loading State */}
+           {selectedClassId && isLoading && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                    {[...Array(3)].map((_, i) => (
+                        <Card key={i} className={i === 2 ? 'lg:col-span-2' : ''}>
+                             <CardHeader>
+                                <Skeleton className="h-5 w-3/5 mb-2" />
+                                <Skeleton className="h-3 w-4/5" />
+                            </CardHeader>
+                            <CardContent className="h-[300px]">
+                                <Skeleton className="h-full w-full" />
+                            </CardContent>
+                        </Card>
+                     ))}
+                </div>
+           )}
+
+
+          {/* Charts - Conditionally render only if class is selected and not loading */}
+          {selectedClassId && !isLoading && (
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                 {/* Chart 1: Class Average by Subject */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-lg">Average Performance by Subject</CardTitle>
+                        <CardTitle className="text-lg flex items-center gap-2"><BookOpen size={18}/> Average by Subject</CardTitle>
                          <CardDescription>
-                             Class: {mockClasses.find(c=>c.id === selectedClassId)?.name} | Test Type: {selectedTestTypeId === 'all' ? 'All' : selectedTestTypeId}
+                             {selectedClassName} | Test Type: {selectedTestTypeName}
                          </CardDescription>
                     </CardHeader>
                     <CardContent>
                         {subjectAverageData && subjectAverageData.length > 0 ? (
                              <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                               <BarChart data={subjectAverageData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-                                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                                 <XAxis dataKey="subject" tickLine={false} tickMargin={10} axisLine={false} />
-                                 <YAxis domain={[0, 100]} unit="%" allowDecimals={false} />
-                                 <ChartTooltip content={<ChartTooltipContent />} />
-                                  <ChartLegend content={<ChartLegendContent />} />
-                                 <Bar dataKey="average" fill="var(--color-average)" radius={4}>
-                                     <LabelList position="top" offset={5} className="fill-foreground" fontSize={10} formatter={(value: number) => `${value}%`} />
-                                 </Bar>
-                               </BarChart>
+                               <ResponsiveContainer>
+                                   <BarChart data={subjectAverageData} margin={{ top: 20, right: 10, left: -10, bottom: 0 }}>
+                                     <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border)/0.5)" />
+                                     <XAxis dataKey="subject" tickLine={false} tickMargin={10} axisLine={false} fontSize={12} interval={0} angle={-30} textAnchor="end" height={50} />
+                                     <YAxis domain={[0, 100]} unit="%" allowDecimals={false} fontSize={12} />
+                                     <ChartTooltip
+                                        cursor={false}
+                                        content={<ChartTooltipContent indicator="dot" />}
+                                      />
+                                     {/* <ChartLegend content={<ChartLegendContent />} /> */}
+                                     <Bar dataKey="average" fill="var(--color-average)" radius={4}>
+                                         <LabelList position="top" offset={5} className="fill-foreground" fontSize={10} formatter={(value: number) => `${value}%`} />
+                                     </Bar>
+                                   </BarChart>
+                               </ResponsiveContainer>
                              </ChartContainer>
                         ) : (
-                            <div className="h-[300px] flex items-center justify-center text-muted-foreground">No data available for these filters.</div>
+                            <div className="h-[300px] flex items-center justify-center text-muted-foreground text-center px-4">No average data available for the selected filters.</div>
                         )}
                     </CardContent>
                 </Card>
@@ -348,29 +401,33 @@ export function ClassReports() {
                  {/* Chart 2: Section Comparison */}
                  <Card>
                      <CardHeader>
-                         <CardTitle className="text-lg">Section Comparison</CardTitle>
+                         <CardTitle className="text-lg flex items-center gap-2"><Users size={18}/> Section Comparison</CardTitle>
                          <CardDescription>
-                              Class: {mockClasses.find(c=>c.id === selectedClassId)?.name} | Subject: {sectionComparisonData?.subjectName ?? 'N/A'} | Test Type: {selectedTestTypeId === 'all' ? 'All' : selectedTestTypeId}
+                              {selectedClassName} | Subject: {selectedSubjectName} | Test Type: {selectedTestTypeName}
                           </CardDescription>
                      </CardHeader>
                      <CardContent>
-                         {/* Check if sectionComparisonData is an object and its data array has items */}
                          {sectionComparisonData && sectionComparisonData.data && sectionComparisonData.data.length > 0 ? (
                              <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                               <BarChart data={sectionComparisonData.data} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 0 }}>
-                                 <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-                                  <XAxis type="number" domain={[0, 100]} unit="%" allowDecimals={false} />
-                                  <YAxis dataKey="section" type="category" tickLine={false} tickMargin={5} axisLine={false} width={80}/>
-                                 <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
-                                 <ChartLegend content={<ChartLegendContent />} />
-                                 <Bar dataKey="average" fill="var(--color-average)" radius={4} layout="vertical">
-                                     <LabelList position="right" offset={5} className="fill-foreground" fontSize={10} formatter={(value: number) => `${value}%`} />
-                                 </Bar>
-                               </BarChart>
+                                <ResponsiveContainer>
+                                    <BarChart data={sectionComparisonData.data} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 0 }}>
+                                      <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="hsl(var(--border)/0.5)" />
+                                      <XAxis type="number" domain={[0, 100]} unit="%" allowDecimals={false} fontSize={12} />
+                                      <YAxis dataKey="section" type="category" tickLine={false} tickMargin={5} axisLine={false} width={80} fontSize={12}/>
+                                      <ChartTooltip
+                                          cursor={false}
+                                          content={<ChartTooltipContent indicator="line" />}
+                                        />
+                                      {/* <ChartLegend content={<ChartLegendContent />} /> */}
+                                      <Bar dataKey="average" fill="var(--color-average)" radius={4} layout="vertical">
+                                          <LabelList position="right" offset={5} className="fill-foreground" fontSize={10} formatter={(value: number) => `${value}%`} />
+                                      </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
                              </ChartContainer>
                          ) : (
-                            <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                                {selectedSubjectId === 'all' ? "Select a specific subject for section comparison." : "No data available for these filters."}
+                            <div className="h-[300px] flex items-center justify-center text-muted-foreground text-center px-4">
+                                {selectedSubjectId === 'all-subjects' ? "Select a specific subject for section comparison." : (cls && cls.sections.length < 2 ? "This class has only one section." : "No comparison data available for these filters.")}
                             </div>
                         )}
                      </CardContent>
@@ -379,37 +436,37 @@ export function ClassReports() {
                  {/* Section 3: High/Low Scorers */}
                   <Card className="lg:col-span-2">
                      <CardHeader>
-                         <CardTitle className="text-lg">Top and Bottom Performers</CardTitle>
+                         <CardTitle className="text-lg">Top & Bottom Performers</CardTitle>
                          <CardDescription>
-                              Class: {mockClasses.find(c=>c.id === selectedClassId)?.name} | Subject: {selectedSubjectId === 'all' ? 'All' : mockSubjects.find(s=>s.id===selectedSubjectId)?.name} | Test Type: {selectedTestTypeId === 'all' ? 'All' : selectedTestTypeId}
+                              {selectedClassName} | Subject: {selectedSubjectName} | Test Type: {selectedTestTypeName} (Overall Average %)
                           </CardDescription>
                      </CardHeader>
                      <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                         <div>
-                            <h4 className="font-semibold mb-2 flex items-center gap-1 text-green-600"><TrendingUp size={18} /> Top 5 Performers</h4>
+                         <div className="border p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/50">
+                            <h4 className="font-semibold mb-3 flex items-center gap-1.5 text-green-700 dark:text-green-400"><TrendingUp size={18} /> Top 5 Performers</h4>
                              {scorerData.top.length > 0 ? (
-                                 <ul className="space-y-1 text-sm">
-                                     {scorerData.top.map(student => (
-                                         <li key={student.studentId} className="flex justify-between items-center p-1 rounded hover:bg-muted/50">
-                                             <span>{student.name}</span>
-                                             <span className="font-medium text-green-700">{student.averagePercent}%</span>
+                                 <ul className="space-y-1.5 text-sm">
+                                     {scorerData.top.map((student, index) => (
+                                         <li key={student.studentId} className="flex justify-between items-center p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors">
+                                              <span>{index + 1}. {student.name}</span>
+                                             <span className="font-medium text-green-800 dark:text-green-300">{student.averagePercent}%</span>
                                          </li>
                                      ))}
                                  </ul>
-                             ): ( <p className="text-sm text-muted-foreground">No data available.</p> )}
+                             ): ( <p className="text-sm text-muted-foreground italic">No top performer data available.</p> )}
                          </div>
-                         <div>
-                             <h4 className="font-semibold mb-2 flex items-center gap-1 text-red-600"><TrendingDown size={18} /> Bottom 5 Performers</h4>
+                         <div className="border p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50">
+                             <h4 className="font-semibold mb-3 flex items-center gap-1.5 text-red-700 dark:text-red-400"><TrendingDown size={18} /> Bottom 5 Performers</h4>
                               {scorerData.bottom.length > 0 ? (
-                                 <ul className="space-y-1 text-sm">
-                                     {scorerData.bottom.map(student => (
-                                         <li key={student.studentId} className="flex justify-between items-center p-1 rounded hover:bg-muted/50">
-                                             <span>{student.name}</span>
-                                             <span className="font-medium text-red-700">{student.averagePercent}%</span>
+                                 <ul className="space-y-1.5 text-sm">
+                                     {scorerData.bottom.map((student, index) => (
+                                         <li key={student.studentId} className="flex justify-between items-center p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors">
+                                              <span>{index + 1}. {student.name}</span>
+                                             <span className="font-medium text-red-800 dark:text-red-300">{student.averagePercent}%</span>
                                          </li>
                                      ))}
                                  </ul>
-                             ): ( <p className="text-sm text-muted-foreground">No data available.</p> )}
+                             ): ( <p className="text-sm text-muted-foreground italic">No bottom performer data available.</p> )}
                          </div>
                      </CardContent>
                  </Card>
@@ -421,7 +478,3 @@ export function ClassReports() {
     </div>
   );
 }
-
-
-
-    
