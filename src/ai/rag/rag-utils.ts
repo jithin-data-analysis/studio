@@ -4,13 +4,14 @@
  * using Langchain, Google Embeddings, and ChromaDB.
  */
 
-import {GoogleGenerativeAiEmbeddings} from '@langchain/google-genai';
+import {GoogleGenerativeAIEmbeddings} from '@langchain/google-genai'; // Corrected import name
 import { Chroma } from "@langchain/community/vectorstores/chroma"; // Use Langchain's Chroma wrapper
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
-import { WebPDFLoader } from "langchain/document_loaders/web/pdf";
+// Changed from fs/pdf to web/pdf and renamed to WebPDFLoader
+import { WebPDFLoader } from "langchain/document_loaders/web/pdf"; // Corrected import path
 import type { Document } from "@langchain/core/documents";
 import type { Embeddings } from "@langchain/core/embeddings";
-import fs from 'fs/promises';
+import fs from 'fs/promises'; // Import fs promises for checking directory existence
 import path from 'path';
 
 const MODEL_NAME = 'models/embedding-001'; // Recommended model by Google
@@ -19,10 +20,11 @@ const CHROMA_COLLECTION_NAME = "syllabus_collection"; // Name for the Chroma col
 
 /**
  * Converts a data URI string to a Blob object.
+ * Made async to comply with Server Action file requirements.
  * @param dataURI The data URI string (e.g., "data:application/pdf;base64,...").
- * @returns A Blob object representing the file data.
+ * @returns A promise that resolves to a Blob object representing the file data.
  */
-export function dataUriToBlob(dataURI: string): Blob {
+export async function dataUriToBlob(dataURI: string): Promise<Blob> {
   // This function runs potentially on the client and server, atob is fine here.
   const byteString = atob(dataURI.split(',')[1]);
   const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
@@ -63,15 +65,21 @@ export async function processDocumentFromBlob(blob: Blob): Promise<Document[]> {
 /**
  * Retrieves the Google Generative AI Embeddings instance.
  * Requires GOOGLE_GENAI_API_KEY environment variable.
- * @param apiKey The Google AI API key.
- * @returns A GoogleGenerativeAiEmbeddings instance.
+ * Made async to comply with Server Action file requirements.
+ * @returns A promise that resolves to a GoogleGenerativeAIEmbeddings instance.
  */
-export async function getEmbeddings(apiKey: string): Promise<GoogleGenerativeAiEmbeddings> {
-  return new GoogleGenerativeAiEmbeddings({
+export async function getEmbeddings(): Promise<GoogleGenerativeAIEmbeddings> {
+  const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing GOOGLE_GENAI_API_KEY environment variable.');
+  }
+  return new GoogleGenerativeAIEmbeddings({ // Corrected class name
     apiKey,
     model: MODEL_NAME,
+    // taskType: TaskType.RETRIEVAL_DOCUMENT, // Optional: Specify task type if needed
   });
 }
+
 
 /**
  * Initializes or loads the Chroma vector store using Langchain wrapper.
