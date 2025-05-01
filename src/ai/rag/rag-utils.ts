@@ -1,4 +1,3 @@
-// src/ai/rag/rag-utils.ts
 'use server';
 /**
  * @fileOverview Utilities for Retrieval-Augmented Generation (RAG)
@@ -6,10 +5,12 @@
  */
 
 import {GoogleGenerativeAiEmbeddings} from '@langchain/google-genai';
-import { Chroma } from "@langchain/community/vectorstores/chroma";
+// Corrected import path for Chroma
+// import { Chroma } from "@langchain/chroma";
+import { ChromaClient } from 'chromadb';
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 // Changed from fs/pdf to web/pdf and renamed to WebPDFLoader
-import { WebPDFLoader } from "@langchain/community/document_loaders/web/pdf";
+import { WebPDFLoader } from "langchain/document_loaders/web/pdf"; // Corrected import path
 import type { Document } from "@langchain/core/documents";
 import fs from 'fs/promises'; // Import fs promises for checking directory existence
 import path from 'path';
@@ -21,9 +22,9 @@ const CHROMA_COLLECTION_NAME = "syllabus_collection"; // Name for the Chroma col
 /**
  * Converts a data URI string to a Blob object.
  * @param dataURI The data URI string (e.g., "data:application/pdf;base64,...").
- * @returns A promise that resolves to a Blob object representing the file data.
+ * @returns A Blob object representing the file data.
  */
-export async function dataUriToBlob(dataURI: string): Promise<Blob> { // Made async
+export async function dataUriToBlob(dataURI: string): Promise<Blob> {
   const byteString = atob(dataURI.split(',')[1]);
   const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
   const ab = new ArrayBuffer(byteString.length);
@@ -84,7 +85,7 @@ export async function getEmbeddings(): Promise<GoogleGenerativeAiEmbeddings> {
  * @param embeddings The embeddings model instance.
  * @returns A Chroma vector store instance.
  */
-async function getVectorStoreInstance(embeddings: GoogleGenerativeAiEmbeddings): Promise<Chroma> {
+async function getVectorStoreInstance(embeddings: GoogleGenerativeAiEmbeddings): Promise<ChromaClient> {
     // Ensure the directory exists before trying to initialize Chroma
     try {
         await fs.mkdir(CHROMA_DB_PATH, { recursive: true });
@@ -98,11 +99,10 @@ async function getVectorStoreInstance(embeddings: GoogleGenerativeAiEmbeddings):
     }
 
      try {
-         const vectorStore = new Chroma(embeddings, {
-             collectionName: CHROMA_COLLECTION_NAME,
-             url: `file://${CHROMA_DB_PATH}`, // Use file protocol for local path
+         const client = new ChromaClient({
+             path: CHROMA_DB_PATH, // Use file protocol for local path
          });
-         return vectorStore;
+         return client;
      } catch (initError) {
          console.error("Error initializing Chroma:", initError);
          throw new Error("Failed to initialize vector store.");
@@ -119,8 +119,25 @@ async function getVectorStoreInstance(embeddings: GoogleGenerativeAiEmbeddings):
 export async function ensureVectorStore(
   embeddings: GoogleGenerativeAiEmbeddings,
   documents?: Document[]
-): Promise<Chroma> {
-    const vectorStore = await getVectorStoreInstance(embeddings);
+): Promise<any> {
+    const client = await getVectorStoreInstance(embeddings);
+    let collection;
+
+    try {
+        collection = await client.getCollection({name: CHROMA_COLLECTION_NAME});
+    } catch (e:any) {
+        console.log("collection doesnt exist, creating...");
+    }
+
+    if (!collection) {
+      try {
+        collection = await client.createCollection({name: CHROMA_COLLECTION_NAME, embeddingFunction: () => embeddings});
+        console.log(`Created Chroma collection: ${CHROMA_COLLECTION_NAME}`);
+      } catch (error) {
+        console.error("Error creating Chroma collection:", error);
+        throw new Error("Failed to create collection in vector store.");
+      }
+    }
 
     if (documents && documents.length > 0) {
         try {
@@ -129,7 +146,9 @@ export async function ensureVectorStore(
             const batchSize = 100; // Example batch size
             for (let i = 0; i < documents.length; i += batchSize) {
                 const batch = documents.slice(i, i + batchSize);
-                await vectorStore.addDocuments(batch);
+                const texts = batch.map(doc => doc.pageContent);
+                const metadatas = batch.map(doc => doc.metadata);
+                await collection.add({documents:texts, metadatas: metadatas, ids: batch.map((_, index) => `id${i + index}`)});
                 console.log(`Added batch ${Math.floor(i / batchSize) + 1}`);
                  // Optional delay between batches if rate limiting is an issue
                  // await new Promise(resolve => setTimeout(resolve, 500));
@@ -148,7 +167,7 @@ export async function ensureVectorStore(
          // You might need to add checks or initialization logic depending on the Chroma client version
          try {
              // Attempt a simple operation to ensure connection/collection exists
-             const count = await vectorStore.collection?.count();
+             const count = await collection.count();
              console.log(`Collection '${CHROMA_COLLECTION_NAME}' contains ${count} documents.`);
          } catch (loadError) {
              console.warn(`Could not verify existing collection (might be empty or error during check): ${loadError}`);
@@ -156,7 +175,7 @@ export async function ensureVectorStore(
          }
     }
 
-    return vectorStore;
+    return collection;
 }
 
 
@@ -169,20 +188,23 @@ export async function ensureVectorStore(
  */
 export async function retrieveRelevantDocuments(
     query: string,
-    vectorStore: Chroma,
+    collection: any,
     numDocuments: number = 3 // Reduced default for potentially smaller context windows
 ): Promise<Document[]> {
     console.log(`Retrieving ${numDocuments} documents for query (first 50 chars): "${query.substring(0, 50)}..."`);
     try {
          // Ensure the collection is loaded/exists before searching
-         if (!vectorStore.collection) {
+         if (!collection) {
             console.warn("Chroma collection is not available for searching.");
             // Attempt to re-initialize or load if necessary, or throw
             return []; // Return empty if collection isn't ready
          }
-        const results = await vectorStore.similaritySearch(query, numDocuments);
+        const results = await collection.query({queryTexts: [query], nResults: numDocuments});
         console.log(`Retrieved ${results.length} documents.`);
-        return results;
+        const documents = results.documents[0].map((text:string, index:number) => {
+          return {pageContent: text, metadata: results.metadatas[0][index]}
+        })
+        return documents;
     } catch (error) {
         console.error("Error during similarity search:", error);
         // Consider returning empty array or re-throwing depending on desired behavior
