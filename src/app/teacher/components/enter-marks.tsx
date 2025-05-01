@@ -1,7 +1,7 @@
 // src/app/teacher/components/enter-marks.tsx
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react'; // Added useRef
 import {
   Card,
   CardContent,
@@ -51,6 +51,7 @@ import {
   Sparkles,
   ChevronDown,
   FileSpreadsheet, // Icon for CSV Upload
+  Edit, // Import the Edit icon
 } from 'lucide-react';
 import { type Class, type Subject, type CoCurricularActivity, type Student, type Test as TestType, type Mark } from '@/types'; // Added TestType and Mark
 import { useToast } from '@/hooks/use-toast';
@@ -130,6 +131,7 @@ export function EnterMarks() {
   const [isSavingTests, setIsSavingTests] = useState(false);
   const [isSavingMarks, setIsSavingMarks] = useState(false);
   const [activeAccordionItems, setActiveAccordionItems] = useState<string[]>([]);
+  const csvInputRef = useRef<HTMLInputElement>(null); // Ref for CSV input
   const { toast } = useToast();
 
   const availableSubjects = useMemo(() => {
@@ -257,8 +259,60 @@ export function EnterMarks() {
       }
   };
 
-   const handleChapterChange = (testId: string, chapterId: string, isChecked: boolean | string) => { /* ... [unchanged] ... */ }
-   const handleTopicChange = (testId: string, topicId: string, isChecked: boolean | string) => { /* ... [unchanged] ... */ }
+    // Placeholder implementation - needs actual syllabus data access logic
+   const handleChapterChange = (testId: string, chapterId: string, isChecked: boolean | string) => {
+     const chapter = currentSyllabus?.chapters.find((c: any) => c.id === chapterId);
+     if (!chapter) return;
+     const topicIds = chapter.topics.map((t: any) => t.id);
+
+     setDefinedTests((prev: TestFormData[]) => prev.map(test => {
+         if (test.id === testId) {
+             const updatedChapters = isChecked
+                 ? [...new Set([...test.chapters, chapterId])]
+                 : test.chapters.filter(id => id !== chapterId);
+
+             const updatedTopics = isChecked
+                 ? [...new Set([...test.topics, ...topicIds])] // Select all topics if chapter checked
+                 : test.topics.filter(id => !topicIds.includes(id)); // Deselect all topics if chapter unchecked
+
+             return { ...test, chapters: updatedChapters, topics: updatedTopics };
+         }
+         return test;
+     }));
+   };
+
+    // Placeholder implementation - needs actual syllabus data access logic
+   const handleTopicChange = (testId: string, topicId: string, isChecked: boolean | string) => {
+      setDefinedTests((prev: TestFormData[]) => prev.map(test => {
+         if (test.id === testId) {
+              const updatedTopics = isChecked
+                 ? [...new Set([...test.topics, topicId])]
+                 : test.topics.filter(id => id !== topicId);
+
+               // Auto-check/uncheck chapter based on topic selection
+               let updatedChapters = [...test.chapters];
+               const chapter = currentSyllabus?.chapters.find((c: any) => c.topics.some((t: any) => t.id === topicId));
+
+               if (chapter) {
+                   const allTopicIdsInChapter = chapter.topics.map((t: any) => t.id);
+                   const allTopicsSelected = allTopicIdsInChapter.every(tid => updatedTopics.includes(tid));
+                   const someTopicsSelected = allTopicIdsInChapter.some(tid => updatedTopics.includes(tid));
+
+                   if (allTopicsSelected && !updatedChapters.includes(chapter.id)) {
+                       updatedChapters.push(chapter.id); // Auto-check chapter
+                   } else if (!someTopicsSelected && updatedChapters.includes(chapter.id)) {
+                       updatedChapters = updatedChapters.filter(id => id !== chapter.id); // Auto-uncheck chapter
+                   } else if (someTopicsSelected && !updatedChapters.includes(chapter.id)) {
+                        // If some topics are selected but chapter isn't, check the chapter
+                       updatedChapters.push(chapter.id);
+                   }
+               }
+
+             return { ...test, topics: updatedTopics, chapters: [...new Set(updatedChapters)] };
+         }
+         return test;
+     }));
+   };
 
 
   const handleSaveAllDefinedTests = async () => {
@@ -392,16 +446,94 @@ export function EnterMarks() {
      }
   };
 
-  const handleUploadCSV = () => {
-      // TODO: Implement CSV upload logic
-      // 1. Trigger file input
-      // 2. Read file content
-      // 3. Parse CSV (e.g., using papaparse)
-      // 4. Validate headers (RollNo, Marks)
-      // 5. Match RollNo with studentsForMarkEntry
-      // 6. Update studentMarks state
-      // 7. Show success/error toasts
-      toast({ title: "Coming Soon", description: "CSV upload functionality is under development." });
+  const triggerCSVUpload = () => {
+      csvInputRef.current?.click();
+  };
+
+  const handleUploadCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (!event.target.files || event.target.files.length === 0) return;
+      const file = event.target.files[0];
+
+      if (file.type !== 'text/csv') {
+          toast({ title: "Invalid File Type", description: "Please upload a CSV file.", variant: "destructive" });
+          return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          const content = e.target?.result as string;
+          if (!content) {
+               toast({ title: "File Error", description: "Could not read CSV content.", variant: "destructive" });
+               return;
+          }
+          try {
+             // Basic CSV Parsing (assumes Roll No, Marks columns) - use a library like Papaparse for robustness
+             const lines = content.split(/\r?\n/).filter(line => line.trim() !== '');
+             if (lines.length < 2) throw new Error("CSV must have at least a header and one data row.");
+
+             const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+             const rollNoIndex = headers.indexOf('roll no'); // Case insensitive search
+             const marksIndex = headers.indexOf('marks');
+
+             if (rollNoIndex === -1 || marksIndex === -1) {
+                 throw new Error("CSV must contain 'Roll No' and 'Marks' columns.");
+             }
+
+             const updatedMarks: { [studentId: string]: number | '' } = { ...studentMarks };
+             let importedCount = 0;
+             let errorCount = 0;
+
+             for (let i = 1; i < lines.length; i++) {
+                 const values = lines[i].split(',');
+                 const rollNo = values[rollNoIndex]?.trim();
+                 const markStr = values[marksIndex]?.trim();
+
+                 if (!rollNo || markStr === undefined) continue; // Skip empty lines or missing data
+
+                 const student = studentsForMarkEntry.find(s => s.rollNo === rollNo);
+                 if (!student) {
+                      console.warn(`Student with Roll No ${rollNo} not found in the current list.`);
+                      errorCount++;
+                      continue;
+                 }
+
+                 const markValue = markStr === '' ? '' : parseInt(markStr, 10);
+                 const testDetails = savedTests.find(t => t.id === selectedTestForMarks);
+                 const maxMarks = testDetails?.totalMarks as number | undefined;
+
+
+                 if (markValue === '' || (!isNaN(markValue) && markValue >= 0 && (maxMarks === undefined || markValue <= maxMarks))) {
+                      updatedMarks[student.id] = markValue;
+                      importedCount++;
+                 } else {
+                     console.warn(`Invalid mark "${markStr}" for Roll No ${rollNo}. Max marks: ${maxMarks}`);
+                     errorCount++;
+                 }
+             }
+
+             setStudentMarks(updatedMarks);
+             toast({
+                title: "CSV Processed",
+                description: `${importedCount} marks imported. ${errorCount > 0 ? `${errorCount} errors (check console for details).` : 'No errors.'}`
+            });
+
+          } catch (parseError: any) {
+               toast({ title: "CSV Parsing Error", description: parseError.message || "Failed to parse CSV file.", variant: "destructive" });
+          } finally {
+               // Reset file input
+                if (csvInputRef.current) {
+                    csvInputRef.current.value = "";
+                }
+          }
+      };
+      reader.onerror = () => {
+            toast({ title: "File Read Error", description: "Could not read the selected file.", variant: "destructive" });
+            if (csvInputRef.current) {
+                 csvInputRef.current.value = "";
+            }
+      }
+      reader.readAsText(file);
+
   };
 
   const handlePrintAnalysis = () => {
@@ -467,14 +599,14 @@ export function EnterMarks() {
            <CardDescription className="text-muted-foreground mt-1">Add details for new tests for the selected class and subject. Saved tests will appear in the 'Enter Marks' section.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 p-4 md:p-6">
-            <Button onClick={handleAddTest} disabled={!selectedClassId || !selectedSubjectId} variant="secondary" className="shadow-sm hover:shadow-md transition-shadow">
-                <PlusCircle className="mr-2 h-4 w-4" /> Add New Test Definition
+            <Button onClick={handleAddTest} disabled={!selectedClassId || !selectedSubjectId} variant="secondary" className="shadow-sm hover:shadow-md transition-shadow group">
+                 <span className="group-hover:animate-bounce mr-2">✨</span> Add New Test Definition <PlusCircle className="ml-2 h-4 w-4" />
             </Button>
 
             {definedTests.length === 0 && (selectedClassId && selectedSubjectId) && (
                  <div className="text-center text-muted-foreground py-10 border-2 border-dashed border-muted rounded-lg bg-muted/20">
                      <p className="font-medium">No new tests being defined.</p>
-                     <p className="text-sm">Click "+ Add New Test Definition" to start or select a saved test below to enter marks.</p>
+                     <p className="text-sm">Click the magic button above to start or select a saved test below to enter marks.</p>
                  </div>
              )}
 
@@ -500,7 +632,7 @@ export function EnterMarks() {
                                   <div className="flex items-center gap-2">
                                       {test.file && <FileText className="h-4 w-4 text-green-600" title="Paper Uploaded" />}
                                       {(test.chapters.length > 0 || test.topics.length > 0) && <BookCopy className="h-4 w-4 text-blue-600" title="Syllabus Linked" />}
-                                       {(!test.name || !test.date || test.totalMarks === '' || test.totalMarks < 0) && (
+                                       {(!test.name || !test.date || test.totalMarks === '' || (typeof test.totalMarks === 'number' && test.totalMarks < 0)) && ( // Added type check
                                             <span className="text-xs text-destructive font-medium">(Incomplete)</span>
                                        )}
                                        <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 text-muted-foreground group-data-[state=open]/accordion-trigger:rotate-180" />
@@ -508,7 +640,7 @@ export function EnterMarks() {
                               </div>
                           </AccordionTrigger>
                           <AccordionContent className="p-4 border-t border-border bg-muted/10 dark:bg-muted/5">
-                             {/* ... [ Test Form Fields - Unchanged from previous version] ... */}
+                             {/* Test Form Fields */}
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                                  <div>
                                      <Label htmlFor={`testName-${test.id}`} className="text-xs font-medium">Test Name*</Label>
@@ -524,7 +656,7 @@ export function EnterMarks() {
                                    <div>
                                       <Label htmlFor={`totalMarks-${test.id}`} className="text-xs font-medium">Total Marks*</Label>
                                       <Input id={`totalMarks-${test.id}`} type="number" value={test.totalMarks} onChange={(e) => handleTestChange(test.id, 'totalMarks', e.target.value)} placeholder="e.g., 100" min="0" required className="bg-background" />
-                                       {(test.totalMarks !== '' && test.totalMarks < 0) && <p className="text-xs text-destructive mt-1">Marks cannot be negative.</p>}
+                                       {(typeof test.totalMarks === 'number' && test.totalMarks < 0) && <p className="text-xs text-destructive mt-1">Marks cannot be negative.</p>}
                                   </div>
                                   <div>
                                       <Label htmlFor={`fileUpload-${test.id}`} className="text-xs font-medium">Upload Paper (PDF/DOCX)</Label>
@@ -541,7 +673,6 @@ export function EnterMarks() {
                                  <div className="mt-6 pt-4 border-t border-border/50">
                                       <h4 className="font-medium text-sm mb-3 flex items-center gap-2"><BookCopy className="h-4 w-4" /> Link to Syllabus Covered</h4>
                                        <ScrollArea className="h-48 w-full rounded-md border border-border bg-background p-3">
-                                          {/* ... [Syllabus Checkboxes - Unchanged] ... */}
                                           <div className="space-y-3">
                                               {currentSyllabus.chapters.length === 0 && <p className="text-sm text-muted-foreground">No syllabus chapters found for this subject.</p>}
                                               {currentSyllabus.chapters.map((chapter) => (
@@ -579,7 +710,7 @@ export function EnterMarks() {
         </CardContent>
          {definedTests.length > 0 && (
               <CardFooter className="flex justify-end border-t pt-4 mt-6 p-4 md:p-6 bg-muted/30 dark:bg-muted/10">
-                 <Button onClick={handleSaveAllDefinedTests} disabled={isSavingTests} size="lg" className="bg-teal-600 hover:bg-teal-700 text-white">
+                 <Button onClick={handleSaveAllDefinedTests} disabled={isSavingTests} size="lg" className="bg-teal-600 hover:bg-teal-700 text-white shadow-lg hover:shadow-teal-500/40 transition-all duration-300 transform hover:scale-105">
                    {isSavingTests ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                    Save All New Test Definitions ({definedTests.length})
                  </Button>
@@ -617,30 +748,44 @@ export function EnterMarks() {
                      </Select>
                </div>
 
+                {/* Hidden File Input for CSV */}
+               <input
+                    type="file"
+                    ref={csvInputRef}
+                    onChange={handleUploadCSV}
+                    className="hidden"
+                    accept=".csv"
+               />
+
                {/* Marks Table */}
                {selectedTestForMarks && studentsForMarkEntry.length > 0 && (
                    <div className="space-y-4 pt-4 border-t">
-                        <div className="flex justify-between items-center">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                             <h3 className="font-semibold text-lg">
-                                Marks for: {savedTests.find(t=>t.id===selectedTestForMarks)?.name} (Max: {savedTests.find(t=>t.id===selectedTestForMarks)?.totalMarks})
+                                Marks for: <span className="text-blue-600 dark:text-blue-400">{savedTests.find(t=>t.id===selectedTestForMarks)?.name}</span>
+                                <span className="text-muted-foreground text-sm ml-2">(Max: {savedTests.find(t=>t.id===selectedTestForMarks)?.totalMarks})</span>
                             </h3>
-                             <Button variant="outline" size="sm" onClick={handleUploadCSV} disabled={isSavingMarks}>
-                                <FileSpreadsheet className="mr-2 h-4 w-4" /> Upload CSV
+                            {/* Enhanced CSV Upload Button */}
+                             <Button variant="outline" size="sm" onClick={triggerCSVUpload} disabled={isSavingMarks} className="bg-gradient-to-r from-green-50 to-lime-50 hover:from-green-100 hover:to-lime-100 border-green-300 text-green-700 shadow-sm hover:shadow-md transition-all group">
+                                <FileSpreadsheet className="mr-2 h-4 w-4 group-hover:animate-pulse" /> Bulk Upload (CSV)
                             </Button>
                        </div>
                        <div className="border rounded-md overflow-hidden shadow-sm">
                          <Table>
                              <TableHeader className="bg-muted/50 dark:bg-muted/20">
                                 <TableRow>
-                                    <TableHead className="w-[80px]">Roll No.</TableHead>
-                                    <TableHead>Student Name</TableHead>
-                                    <TableHead className="w-[150px] text-right">Obtained Marks*</TableHead>
+                                    <TableHead className="w-[80px] text-center font-semibold text-indigo-800 dark:text-indigo-300">Seat No.</TableHead> {/* Enhanced Header */}
+                                    <TableHead className="font-semibold">Student Name</TableHead>
+                                    <TableHead className="w-[150px] text-right font-semibold">Obtained Marks*</TableHead>
                                 </TableRow>
                              </TableHeader>
                              <TableBody>
-                                 {studentsForMarkEntry.map(student => (
-                                     <TableRow key={student.id} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10">
-                                         <TableCell className="font-mono text-muted-foreground">{student.rollNo}</TableCell>
+                                 {studentsForMarkEntry.map((student, index) => (
+                                     <TableRow key={student.id} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors duration-150">
+                                         {/* Seat Number Style */}
+                                         <TableCell className="font-mono text-center text-lg font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/30 border-r"> {/* Seat Style */}
+                                            {student.rollNo}
+                                          </TableCell>
                                          <TableCell className="font-medium">{student.name}</TableCell>
                                          <TableCell className="text-right">
                                              <Input
@@ -649,8 +794,9 @@ export function EnterMarks() {
                                                  onChange={(e) => handleMarkChange(student.id, e.target.value)}
                                                  min="0"
                                                  max={savedTests.find(t=>t.id===selectedTestForMarks)?.totalMarks}
-                                                 className="text-right bg-background h-8 w-24 focus:ring-blue-500 dark:focus:ring-blue-400" // Added focus ring color
-                                                 placeholder="Enter"
+                                                 className="text-right bg-background h-8 w-24 focus:ring-blue-500 dark:focus:ring-blue-400 border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 transition-colors" // Added focus ring color + border
+                                                 placeholder="Score"
+                                                 aria-label={`Marks for ${student.name}`} // Accessibility
                                                  disabled={isSavingMarks}
                                              />
                                          </TableCell>
@@ -686,7 +832,7 @@ export function EnterMarks() {
                              <Sparkles className="mr-1 h-4 w-4"/> Run Analysis (Coming Soon)
                          </Button> */}
                     </div>
-                    <Button onClick={handleSaveMarks} disabled={isSavingMarks} size="lg" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto">
+                    <Button onClick={handleSaveMarks} disabled={isSavingMarks} size="lg" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto shadow-lg hover:shadow-blue-500/40 transition-all duration-300 transform hover:scale-105">
                         {isSavingMarks ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                          Save Marks for This Test
                     </Button>
@@ -696,52 +842,3 @@ export function EnterMarks() {
     </div>
   );
 }
-
-// Helper functions (unchanged - needed for syllabus linking)
-// const handleChapterChange = (testId: string, chapterId: string, isChecked: boolean | string, currentSyllabus: any, setDefinedTests: Function) => {
-//     const chapter = currentSyllabus?.chapters.find((c: any) => c.id === chapterId);
-//     if (!chapter) return;
-//     const topicIds = chapter.topics.map((t: any) => t.id);
-
-//     setDefinedTests((prev: TestFormData[]) => prev.map(test => {
-//         if (test.id === testId) {
-//             const updatedChapters = isChecked
-//                 ? [...new Set([...test.chapters, chapterId])]
-//                 : test.chapters.filter(id => id !== chapterId);
-
-//             const updatedTopics = isChecked
-//                 ? [...new Set([...test.topics, ...topicIds])]
-//                 : test.topics.filter(id => !topicIds.includes(id));
-
-//             return { ...test, chapters: updatedChapters, topics: updatedTopics };
-//         }
-//         return test;
-//     }));
-// };
-
-// const handleTopicChange = (testId: string, topicId: string, isChecked: boolean | string, currentSyllabus: any, setDefinedTests: Function) => {
-//      setDefinedTests((prev: TestFormData[]) => prev.map(test => {
-//         if (test.id === testId) {
-//              const updatedTopics = isChecked
-//                 ? [...new Set([...test.topics, topicId])]
-//                 : test.topics.filter(id => id !== topicId);
-
-//               let updatedChapters = [...test.chapters];
-//               const chapter = currentSyllabus?.chapters.find((c: any) => c.topics.some((t: any) => t.id === topicId));
-
-//               if (chapter) {
-//                   const allTopicIdsInChapter = chapter.topics.map((t: any) => t.id);
-//                   const topicsSelectedInChapter = updatedTopics.filter(tid => allTopicIdsInChapter.includes(tid));
-
-//                   if (isChecked && !updatedChapters.includes(chapter.id)) {
-//                      updatedChapters.push(chapter.id);
-//                  } else if (!isChecked && topicsSelectedInChapter.length === 0 && updatedChapters.includes(chapter.id)) {
-//                       updatedChapters = updatedChapters.filter(id => id !== chapter.id);
-//                  }
-//              }
-
-//             return { ...test, topics: updatedTopics, chapters: [...new Set(updatedChapters)] };
-//         }
-//         return test;
-//     }));
-// };
