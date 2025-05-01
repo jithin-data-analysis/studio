@@ -27,9 +27,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { PlusCircle, Trash2, Upload, Download, Eye, FileText, BookOpen, Filter } from 'lucide-react'; // Added BookOpen, Filter
+import { PlusCircle, Trash2, Upload, Download, Eye, FileText, BookOpen, Filter, Loader2 } from 'lucide-react'; // Added Loader2
 import { type Subject, type Class } from '@/types';
-import { uploadFile } from '@/services/supabase'; // Assuming this handles upload and returns URL
+import { uploadFileAndProcessForRag } from '@/services/supabase'; // Use the RAG-enabled uploader
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'; // Added AlertDialog
 
@@ -55,6 +55,7 @@ export function Subjects() {
   const [filterClassId, setFilterClassId] = useState<string>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingSubjectId, setUploadingSubjectId] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false); // Added uploading state
   const { toast } = useToast();
 
   const filteredSubjects = useMemo(() => {
@@ -117,6 +118,10 @@ export function Subjects() {
 
     const file = event.target.files[0];
     const subjectIdToUpdate = uploadingSubjectId;
+    const subject = subjects.find(s => s.id === subjectIdToUpdate);
+    if (!subject) return;
+
+    setIsUploading(true); // Set loading state
     setUploadingSubjectId(null); // Reset immediately
 
     // Basic validation (e.g., file type, size) - Add more robust checks
@@ -124,14 +129,16 @@ export function Subjects() {
     if (!allowedTypes.includes(file.type)) {
         toast({ title: "Invalid File Type", description: "Please upload a PDF, DOC, or DOCX file.", variant: "destructive" });
          if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+         setIsUploading(false);
         return;
     }
 
      // Show uploading indicator/toast
-     const uploadToast = toast({ title: "Uploading Syllabus...", description: `Working on ${file.name}...` });
+     const uploadToast = toast({ title: "Uploading & Processing Syllabus...", description: `Working on ${file.name}... This might take a moment.` });
 
     try {
-      const { fileUrl } = await uploadFile(file); // Use the service function
+      // Use the service function that includes RAG processing
+      const { fileUrl } = await uploadFileAndProcessForRag(file, `syllabi/${subject.classId}/${subject.id}/`);
 
       // Update subject in state and potentially via API
        // await api.updateSubjectSyllabus(subjectIdToUpdate, fileUrl); // Replace with actual API call
@@ -141,16 +148,27 @@ export function Subjects() {
         )
       );
 
-      uploadToast.update({ id: uploadToast.id, title: "Upload Complete!", description: `Syllabus for ${subjects.find(s=>s.id === subjectIdToUpdate)?.name} is updated.` });
+      uploadToast.update({ id: uploadToast.id, title: "Upload & Processing Complete!", description: `Syllabus for ${subject.name} updated and indexed for AI analysis.` });
 
     } catch (error) {
-      console.error('Upload failed:', error);
-       uploadToast.update({ id: uploadToast.id, title: "Upload Failed", description: "Could not upload the syllabus. Please try again.", variant: "destructive" });
+      console.error('Upload or RAG processing failed:', error);
+       let errorMsg = "Could not upload/process the syllabus. Please try again.";
+       if (error instanceof Error && error.message.includes("RAG processing")) {
+           errorMsg = `File uploaded, but RAG processing failed: ${error.message.split(': ').slice(1).join(': ')}`;
+           // Update UI even if RAG fails, maybe with a warning?
+            setSubjects((prevSubjects) =>
+                prevSubjects.map((sub) =>
+                    sub.id === subjectIdToUpdate ? { ...sub, syllabusFileUrl: `https://example.com/syllabi/${subject.classId}/${subject.id}/${encodeURIComponent(file.name)}` } : sub // Update with simulated URL anyway
+                )
+            );
+       }
+       uploadToast.update({ id: uploadToast.id, title: "Upload/Processing Failed", description: errorMsg, variant: "destructive" });
     } finally {
        // Reset file input value to allow re-uploading the same file
         if (fileInputRef.current) {
             fileInputRef.current.value = "";
         }
+        setIsUploading(false); // Reset loading state
     }
   };
 
@@ -163,7 +181,7 @@ export function Subjects() {
             <BookOpen className="h-6 w-6"/> Manage Subjects & Syllabi
          </CardTitle>
         <CardDescription className="text-muted-foreground mt-1">
-          Define the subjects taught in each class and easily upload or update their syllabus documents.
+          Define subjects and upload syllabus documents. Uploaded syllabi are processed for AI analysis (RAG).
         </CardDescription>
       </CardHeader>
       <CardContent className="p-4 md:p-6"> {/* Adjusted padding */}
@@ -208,6 +226,7 @@ export function Subjects() {
             onChange={handleFileUpload}
             className="hidden"
             accept=".pdf,.doc,.docx" // Define accepted types
+            disabled={isUploading} // Disable while uploading
         />
 
         {/* Filter Section */}
@@ -250,27 +269,52 @@ export function Subjects() {
                   <TableCell className="font-medium">{subject.name}</TableCell>
                   <TableCell>{findClassName(subject.classId)}</TableCell>
                   <TableCell>
-                    {subject.syllabusFileUrl ? (
-                      <div className="flex items-center gap-2 flex-wrap"> {/* Allow wrap */}
-                         <Button variant="outline" size="sm" asChild className="hover:bg-accent/80 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">
-                          <a href={subject.syllabusFileUrl} target="_blank" rel="noopener noreferrer" title="View Syllabus">
-                            <Eye className="h-4 w-4 mr-1" /> View
-                          </a>
-                        </Button>
-                         <Button variant="outline" size="sm" asChild className="hover:bg-accent/80 border-gray-300 dark:border-gray-700">
-                             <a href={subject.syllabusFileUrl} download title="Download Syllabus">
-                               <Download className="h-4 w-4 mr-1" /> Download
-                             </a>
-                         </Button>
-                        <Button variant="secondary" size="sm" onClick={() => triggerFileUpload(subject.id)} className="hover:bg-secondary/80 shadow-sm">
-                          <Upload className="h-4 w-4 mr-1" /> Replace
-                        </Button>
-                      </div>
-                    ) : (
-                       <Button variant="secondary" size="sm" onClick={() => triggerFileUpload(subject.id)} className="hover:bg-secondary/80 shadow-sm">
-                        <Upload className="h-4 w-4 mr-1" /> Upload Syllabus
-                      </Button>
-                    )}
+                    {/* Upload Button/Status */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                       {subject.syllabusFileUrl ? (
+                          <>
+                              <Button variant="outline" size="sm" asChild className="hover:bg-accent/80 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">
+                                 <a href={subject.syllabusFileUrl} target="_blank" rel="noopener noreferrer" title="View Syllabus">
+                                     <Eye className="h-4 w-4 mr-1" /> View
+                                 </a>
+                              </Button>
+                              <Button variant="outline" size="sm" asChild className="hover:bg-accent/80 border-gray-300 dark:border-gray-700">
+                                  <a href={subject.syllabusFileUrl} download title="Download Syllabus">
+                                     <Download className="h-4 w-4 mr-1" /> Download
+                                  </a>
+                              </Button>
+                              <Button
+                                 variant="secondary"
+                                 size="sm"
+                                 onClick={() => triggerFileUpload(subject.id)}
+                                 className="hover:bg-secondary/80 shadow-sm"
+                                 disabled={isUploading && uploadingSubjectId === subject.id} // Disable specific button while uploading
+                              >
+                                  {isUploading && uploadingSubjectId === subject.id ? (
+                                     <Loader2 className="h-4 w-4 mr-1 animate-spin"/>
+                                  ) : (
+                                      <Upload className="h-4 w-4 mr-1"/>
+                                  )}
+                                  Replace
+                              </Button>
+                          </>
+                       ) : (
+                           <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => triggerFileUpload(subject.id)}
+                              className="hover:bg-secondary/80 shadow-sm"
+                              disabled={isUploading && uploadingSubjectId === subject.id} // Disable specific button while uploading
+                           >
+                               {isUploading && uploadingSubjectId === subject.id ? (
+                                   <Loader2 className="h-4 w-4 mr-1 animate-spin"/>
+                               ) : (
+                                   <Upload className="h-4 w-4 mr-1"/>
+                               )}
+                              Upload Syllabus
+                           </Button>
+                       )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                      {/* Confirmation Dialog for Subject Removal */}
@@ -281,6 +325,7 @@ export function Subjects() {
                               size="icon"
                               className="h-8 w-8 text-destructive hover:bg-destructive/10"
                               title="Remove Subject"
+                              disabled={isUploading} // Disable delete while any upload is in progress
                             >
                               <Trash2 className="h-4 w-4" />
                                <span className="sr-only">Remove Subject</span>
