@@ -1,7 +1,7 @@
 'use server';
 /**
  * @fileOverview Analyzes a test paper to extract key information,
- * using RAG to provide syllabus context.
+ * using RAG to provide syllabus context via Langchain.
  *
  * - analyzeTestPaper - A function that analyzes the test paper.
  * - AnalyzeTestPaperInput - The input type for the analyzeTestPaper function.
@@ -17,6 +17,14 @@ import {
     ensureVectorStore,
     retrieveRelevantDocuments
 } from '../rag/rag-utils'; // Import RAG utils
+
+async function validateApiKey(): Promise<string> {
+  const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing GOOGLE_GENAI_API_KEY environment variable.');
+  }
+  return apiKey;
+}
 
 const AnalyzeTestPaperInputSchema = z.object({
   testPaperDataUri: z
@@ -101,26 +109,29 @@ const analyzeTestPaperFlow = ai.defineFlow<
   outputSchema: AnalyzeTestPaperOutputSchema,
 }, async input => {
 
-    // --- RAG Integration ---
+    // --- RAG Integration using Langchain ---
     let relevantSnippets: string[] = [];
     let queryText = '';
 
     try {
-        console.log("Starting RAG process...");
+        console.log("Starting RAG process with Langchain...");
+        const apiKey = await validateApiKey();
         const blob = dataUriToBlob(input.testPaperDataUri); // Convert Data URI to Blob
 
         // Process the document to get text chunks for the RAG query
-        const chunks = await processDocumentFromBlob(blob); // Process the Blob
+        const chunks = await processDocumentFromBlob(blob); // Process the Blob using Langchain loader/splitter
         queryText = chunks.map(chunk => chunk.pageContent).join("\n").substring(0, 1000); // Use first 1000 chars as query
 
         if (queryText) {
-            const embeddings = getEmbeddings();
-            const vectorStore = await ensureVectorStore(embeddings); // Load existing store
+            const embeddings = await getEmbeddings(apiKey);
+            // Initialize or load the vector store using Langchain's Chroma wrapper
+            const vectorStore = await ensureVectorStore(embeddings);
 
-            console.log("Retrieving relevant documents from ChromaDB...");
+            console.log("Retrieving relevant documents from ChromaDB via Langchain...");
+            // Use Langchain's similaritySearch
             const relevantDocs = await retrieveRelevantDocuments(queryText, vectorStore, 3); // Retrieve top 3 relevant docs
             relevantSnippets = relevantDocs.map(doc => doc.pageContent);
-            console.log(`Retrieved ${relevantSnippets.length} relevant snippets.`);
+            console.log(`Retrieved ${relevantSnippets.length} relevant snippets via Langchain.`);
         } else {
             console.warn("Could not extract text from the document for RAG query.");
         }

@@ -5,14 +5,12 @@
  */
 
 import {GoogleGenerativeAiEmbeddings} from '@langchain/google-genai';
-// Corrected import path for Chroma
-// import { Chroma } from "@langchain/chroma";
-import { ChromaClient } from 'chromadb';
+import { Chroma } from "@langchain/community/vectorstores/chroma"; // Use Langchain's Chroma wrapper
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
-// Changed from fs/pdf to web/pdf and renamed to WebPDFLoader
-import { WebPDFLoader } from "langchain/document_loaders/web/pdf"; // Corrected import path
+import { WebPDFLoader } from "langchain/document_loaders/web/pdf";
 import type { Document } from "@langchain/core/documents";
-import fs from 'fs/promises'; // Import fs promises for checking directory existence
+import type { Embeddings } from "@langchain/core/embeddings";
+import fs from 'fs/promises';
 import path from 'path';
 
 const MODEL_NAME = 'models/embedding-001'; // Recommended model by Google
@@ -24,7 +22,8 @@ const CHROMA_COLLECTION_NAME = "syllabus_collection"; // Name for the Chroma col
  * @param dataURI The data URI string (e.g., "data:application/pdf;base64,...").
  * @returns A Blob object representing the file data.
  */
-export async function dataUriToBlob(dataURI: string): Promise<Blob> {
+export function dataUriToBlob(dataURI: string): Blob {
+  // This function runs potentially on the client and server, atob is fine here.
   const byteString = atob(dataURI.split(',')[1]);
   const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
   const ab = new ArrayBuffer(byteString.length);
@@ -61,154 +60,106 @@ export async function processDocumentFromBlob(blob: Blob): Promise<Document[]> {
   }
 }
 
-
 /**
  * Retrieves the Google Generative AI Embeddings instance.
  * Requires GOOGLE_GENAI_API_KEY environment variable.
+ * @param apiKey The Google AI API key.
  * @returns A GoogleGenerativeAiEmbeddings instance.
  */
-export async function getEmbeddings(): Promise<GoogleGenerativeAiEmbeddings> {
-  const apiKey = process.env.GOOGLE_GENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('Missing GOOGLE_GENAI_API_KEY environment variable.');
-  }
+export async function getEmbeddings(apiKey: string): Promise<GoogleGenerativeAiEmbeddings> {
   return new GoogleGenerativeAiEmbeddings({
     apiKey,
     model: MODEL_NAME,
-    // taskType: TaskType.RETRIEVAL_DOCUMENT, // Optional: Specify task type if needed
   });
 }
 
-
 /**
- * Initializes the Chroma vector store instance.
+ * Initializes or loads the Chroma vector store using Langchain wrapper.
+ * Creates the directory if it doesn't exist.
  * @param embeddings The embeddings model instance.
- * @returns A Chroma vector store instance.
+ * @returns A promise that resolves to the Chroma vector store instance.
  */
-async function getVectorStoreInstance(embeddings: GoogleGenerativeAiEmbeddings): Promise<ChromaClient> {
+async function initializeVectorStore(embeddings: Embeddings): Promise<Chroma> {
     // Ensure the directory exists before trying to initialize Chroma
     try {
         await fs.mkdir(CHROMA_DB_PATH, { recursive: true });
+        console.log(`Ensured Chroma directory exists: ${CHROMA_DB_PATH}`);
     } catch (err) {
-        // Ignore error if directory already exists
         if (err instanceof Error && 'code' in err && err.code !== 'EEXIST') {
              console.error(`Could not create Chroma directory: ${CHROMA_DB_PATH}`, err);
-             throw err; // Re-throw unexpected errors
+             throw err;
         }
-        // console.warn(`Chroma directory already exists or could not be created: ${CHROMA_DB_PATH}`);
     }
 
      try {
-         const client = new ChromaClient({
-             path: CHROMA_DB_PATH, // Use file protocol for local path
+         // Initialize Chroma using Langchain's wrapper
+         // It handles loading the collection if it exists or creating if not.
+         const vectorStore = new Chroma(embeddings, {
+             collectionName: CHROMA_COLLECTION_NAME,
+             url: `file://${CHROMA_DB_PATH}`, // Langchain Chroma uses 'url' for local path with file:// protocol
+             // collectionMetadata: { "hnsw:space": "cosine" }, // Optional: configure space
          });
-         return client;
+          console.log(`Langchain Chroma vector store initialized for collection: ${CHROMA_COLLECTION_NAME}`);
+         return vectorStore;
      } catch (initError) {
-         console.error("Error initializing Chroma:", initError);
+         console.error("Error initializing Langchain Chroma vector store:", initError);
          throw new Error("Failed to initialize vector store.");
      }
 }
 
+
 /**
- * Ensures the vector store exists, adds new documents if provided, and persists.
- * Loads existing collection if documents are not provided.
+ * Ensures the vector store exists and adds new documents if provided using Langchain's Chroma.
  * @param embeddings The embeddings model instance.
  * @param documents Optional array of documents to add to the store.
  * @returns A promise that resolves to the Chroma vector store instance.
  */
 export async function ensureVectorStore(
-  embeddings: GoogleGenerativeAiEmbeddings,
+  embeddings: Embeddings,
   documents?: Document[]
-): Promise<any> {
-    const client = await getVectorStoreInstance(embeddings);
-    let collection;
-
-    try {
-        collection = await client.getCollection({name: CHROMA_COLLECTION_NAME});
-    } catch (e:any) {
-        console.log("collection doesnt exist, creating...");
-    }
-
-    if (!collection) {
-      try {
-        collection = await client.createCollection({name: CHROMA_COLLECTION_NAME, embeddingFunction: () => embeddings});
-        console.log(`Created Chroma collection: ${CHROMA_COLLECTION_NAME}`);
-      } catch (error) {
-        console.error("Error creating Chroma collection:", error);
-        throw new Error("Failed to create collection in vector store.");
-      }
-    }
+): Promise<Chroma> {
+    const vectorStore = await initializeVectorStore(embeddings);
 
     if (documents && documents.length > 0) {
         try {
-            console.log(`Adding ${documents.length} documents to Chroma collection: ${CHROMA_COLLECTION_NAME}`);
-            // Split adding documents into smaller batches if necessary
-            const batchSize = 100; // Example batch size
-            for (let i = 0; i < documents.length; i += batchSize) {
-                const batch = documents.slice(i, i + batchSize);
-                const texts = batch.map(doc => doc.pageContent);
-                const metadatas = batch.map(doc => doc.metadata);
-                await collection.add({documents:texts, metadatas: metadatas, ids: batch.map((_, index) => `id${i + index}`)});
-                console.log(`Added batch ${Math.floor(i / batchSize) + 1}`);
-                 // Optional delay between batches if rate limiting is an issue
-                 // await new Promise(resolve => setTimeout(resolve, 500));
-            }
-            console.log("Documents added successfully.");
-            // Persistence is typically handled by Chroma when using a URL/path.
-            // Check Chroma documentation for specific persistence guarantees/methods if needed.
-             // await vectorStore.persist(); // Explicit persist call if required by your Chroma version/setup
+            console.log(`Adding ${documents.length} documents to Chroma collection via Langchain: ${CHROMA_COLLECTION_NAME}`);
+            // Use Langchain's addDocuments method
+            await vectorStore.addDocuments(documents);
+            console.log("Documents added successfully via Langchain.");
+             // Persistence is handled implicitly by Chroma when initialized with a path/url
         } catch (error) {
-            console.error("Error adding documents to Chroma:", error);
-            throw new Error("Failed to add documents to vector store.");
+            console.error("Error adding documents to Chroma via Langchain:", error);
+            throw new Error("Failed to add documents to vector store via Langchain.");
         }
     } else {
-        // console.log(`Accessing existing Chroma collection: ${CHROMA_COLLECTION_NAME}`);
-         // Verify collection exists or load it - Chroma might handle this implicitly
-         // You might need to add checks or initialization logic depending on the Chroma client version
-         try {
-             // Attempt a simple operation to ensure connection/collection exists
-             const count = await collection.count();
-             console.log(`Collection '${CHROMA_COLLECTION_NAME}' contains ${count} documents.`);
-         } catch (loadError) {
-             console.warn(`Could not verify existing collection (might be empty or error during check): ${loadError}`);
-             // Depending on requirements, you might want to throw an error if loading fails
-         }
+        console.log(`Accessing existing Chroma collection via Langchain: ${CHROMA_COLLECTION_NAME}`);
+         // Verification happens during initialization with Langchain's Chroma class
     }
 
-    return collection;
+    return vectorStore;
 }
 
 
 /**
- * Retrieves relevant documents from the Chroma vector store based on a query.
+ * Retrieves relevant documents from the Chroma vector store based on a query using Langchain.
  * @param query The query string.
- * @param vectorStore The Chroma vector store instance.
- * @param numDocuments The number of relevant documents to retrieve. Defaults to 5.
+ * @param vectorStore The Langchain Chroma vector store instance.
+ * @param numDocuments The number of relevant documents to retrieve. Defaults to 3.
  * @returns A promise that resolves to an array of relevant Document objects.
  */
 export async function retrieveRelevantDocuments(
     query: string,
-    collection: any,
-    numDocuments: number = 3 // Reduced default for potentially smaller context windows
+    vectorStore: Chroma,
+    numDocuments: number = 3
 ): Promise<Document[]> {
-    console.log(`Retrieving ${numDocuments} documents for query (first 50 chars): "${query.substring(0, 50)}..."`);
+    console.log(`Retrieving ${numDocuments} documents via Langchain for query (first 50 chars): "${query.substring(0, 50)}..."`);
     try {
-         // Ensure the collection is loaded/exists before searching
-         if (!collection) {
-            console.warn("Chroma collection is not available for searching.");
-            // Attempt to re-initialize or load if necessary, or throw
-            return []; // Return empty if collection isn't ready
-         }
-        const results = await collection.query({queryTexts: [query], nResults: numDocuments});
-        console.log(`Retrieved ${results.length} documents.`);
-        const documents = results.documents[0].map((text:string, index:number) => {
-          return {pageContent: text, metadata: results.metadatas[0][index]}
-        })
-        return documents;
+        // Use Langchain's similaritySearch method
+        const results = await vectorStore.similaritySearch(query, numDocuments);
+        console.log(`Retrieved ${results.length} documents via Langchain.`);
+        return results;
     } catch (error) {
-        console.error("Error during similarity search:", error);
-        // Consider returning empty array or re-throwing depending on desired behavior
-        // throw new Error("Failed to retrieve relevant documents.");
-        return []; // Return empty on error for now
+        console.error("Error during similarity search via Langchain:", error);
+        return []; // Return empty on error
     }
 }
