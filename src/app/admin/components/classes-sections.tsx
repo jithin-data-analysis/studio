@@ -1,6 +1,7 @@
+// src/app/admin/components/classes-sections.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Added useEffect import
 import {
   Card,
   CardContent,
@@ -9,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
 import {
   Select,
   SelectContent,
@@ -17,11 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { PlusCircle, Trash2, UserPlus, Edit, GripVertical } from 'lucide-react'; // Added GripVertical
+import { PlusCircle, Trash2, UserPlus, Edit, GripVertical, BookOpen } from 'lucide-react'; // Added GripVertical, BookOpen
 import { type Class, type Section, type Student } from '@/types'; // Assuming types are defined
 import { StudentModal } from './student-modal'; // We'll create this next
 import { useToast } from '@/hooks/use-toast'; // Added toast
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'; // Added AlertDialog
+import { Badge } from '@/components/ui/badge'; // Import Badge
 
 const initialClasses: Class[] = [
   // Sample data - replace with API call later
@@ -218,18 +220,21 @@ export function ClassesSections() {
   const gradeOptions = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
 
   return (
-    <Card className="shadow-md dark:shadow-indigo-900/10"> {/* Added shadow */}
-      <CardHeader>
-        <CardTitle>Manage Classes and Sections</CardTitle>
-        <CardDescription>
-          Define school structure. Add classes, then sections, then manage students within each section.
+    <Card className="shadow-md dark:shadow-indigo-900/10 border-t-4 border-primary rounded-xl overflow-hidden"> {/* Added shadow, border, rounded */}
+      <CardHeader className="bg-gradient-to-r from-indigo-50 via-white to-teal-50 dark:from-indigo-900/20 dark:via-background dark:to-teal-900/20 p-4 md:p-6"> {/* Gradient header */}
+        <CardTitle className="text-xl md:text-2xl font-bold text-primary flex items-center gap-2">
+             <BookOpen className="h-6 w-6"/> Manage Classes & Sections
+        </CardTitle>
+        <CardDescription className="text-muted-foreground mt-1">
+          Define your school's structure. Add grades, organize sections, and manage student placements visually.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex items-center gap-2 p-4 border rounded-lg bg-muted/30"> {/* Enhanced Add Class section */}
+      <CardContent className="space-y-6 p-4 md:p-6"> {/* Adjusted padding */}
+         {/* Enhanced Add Class section */}
+        <div className="flex flex-wrap items-center gap-3 p-4 border border-dashed border-indigo-200 dark:border-indigo-800 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10">
           <Select value={selectedGrade} onValueChange={setSelectedGrade}>
-            <SelectTrigger className="w-[180px] bg-background">
-              <SelectValue placeholder="Select Grade" />
+            <SelectTrigger className="w-full sm:w-[180px] bg-background shadow-sm">
+              <SelectValue placeholder="Select Grade Level" />
             </SelectTrigger>
             <SelectContent>
               {gradeOptions.map((grade) => (
@@ -239,29 +244,40 @@ export function ClassesSections() {
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={handleAddClass} disabled={!selectedGrade || classes.some(c => c.name === `Grade ${selectedGrade}`)}>
+          <Button
+            onClick={handleAddClass}
+            disabled={!selectedGrade || classes.some(c => c.name === `Grade ${selectedGrade}`)}
+            className="flex-1 sm:flex-none transition-transform transform hover:scale-105 shadow hover:shadow-lg"
+           >
             <PlusCircle className="mr-2 h-4 w-4" /> Add Class
           </Button>
            {selectedGrade && classes.some(c => c.name === `Grade ${selectedGrade}`) && (
-                <p className="text-xs text-destructive ml-2">Grade {selectedGrade} already exists.</p>
+                <p className="text-xs text-destructive ml-2 w-full sm:w-auto">Grade {selectedGrade} already exists.</p>
            )}
         </div>
 
         <div className="space-y-4">
-          {classes.length === 0 && <p className="text-center text-muted-foreground py-8">No classes created yet. Select a grade and click 'Add Class' to begin.</p>}
+          {classes.length === 0 && (
+             <div className="text-center text-muted-foreground py-12 bg-muted/20 rounded-lg border border-dashed">
+                <BookOpen className="mx-auto h-12 w-12 text-muted-foreground/40 mb-3" />
+                <p className="font-medium">No classes created yet.</p>
+                <p className="text-sm">Select a grade above and click 'Add Class' to start building your school structure.</p>
+             </div>
+          )}
           {classes.map((cls) => (
-            <Card key={cls.id} className="overflow-hidden border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200"> {/* Added hover shadow */}
-              <CardHeader className="flex flex-row items-center justify-between bg-gradient-to-r from-muted/60 to-muted/30 dark:from-muted/30 dark:to-muted/10 p-3 px-4">
+            <Card key={cls.id} className="overflow-hidden border border-border rounded-lg shadow-sm hover:shadow-lg transition-shadow duration-300 bg-gradient-to-br from-white via-white to-indigo-50 dark:from-background dark:via-background dark:to-indigo-900/10"> {/* Added gradient */}
+              <CardHeader className="flex flex-row items-center justify-between bg-muted/30 dark:bg-muted/10 p-3 px-4 border-b">
                  <div className="flex items-center gap-2">
-                   <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" /> {/* Added drag handle icon (visual only) */}
+                   {/* <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" /> */} {/* Removed drag handle for now */}
                    <CardTitle className="text-lg font-semibold text-primary">{cls.name}</CardTitle>
+                    <Badge variant="secondary" className="font-mono text-xs">{cls.sections.length} Section(s)</Badge>
                  </div>
                  <div className="flex gap-2">
                      <Button
                        variant="outline"
                        size="sm"
                        onClick={() => handleAddSection(cls.id)}
-                       className="hover:bg-primary/10 hover:border-primary transition-colors"
+                       className="hover:bg-primary/10 hover:border-primary transition-colors text-primary border-primary/50 hover:text-primary shadow-sm"
                      >
                        <PlusCircle className="mr-1 h-3 w-3" /> Add Section
                      </Button>
@@ -269,8 +285,9 @@ export function ClassesSections() {
                      <AlertDialog>
                          <AlertDialogTrigger asChild>
                             <Button
-                               variant="destructive"
+                               variant="ghost" // Changed to ghost
                                size="icon-sm"
+                               className="text-destructive hover:text-destructive hover:bg-destructive/10"
                                aria-label={`Remove ${cls.name}`}
                                disabled={cls.sections.some(s => s.students.length > 0)} // Disable if class has students
                              >
@@ -295,11 +312,11 @@ export function ClassesSections() {
               <CardContent className="p-4 space-y-3">
                 {cls.sections.length === 0 && <p className="text-sm text-muted-foreground pl-4">No sections yet. Click 'Add Section' above.</p>}
                 {cls.sections.map((sec) => (
-                  <div key={sec.id} className="border rounded-md p-3 bg-background shadow-sm dark:bg-muted/20">
+                  <div key={sec.id} className="border rounded-md p-3 bg-background shadow-sm dark:bg-muted/20 transition-all duration-200 hover:border-indigo-300 dark:hover:border-indigo-700">
                     <div className="flex justify-between items-center mb-3 pb-2 border-b"> {/* Added border bottom */}
                         <h4 className="font-semibold text-indigo-700 dark:text-indigo-400">Section {sec.name}</h4>
                         <div className="flex items-center gap-2">
-                             <Button variant="ghost" size="sm" onClick={() => openAddStudentModal(cls.id, sec.id)} className="hover:bg-accent/80">
+                             <Button variant="outline" size="sm" onClick={() => openAddStudentModal(cls.id, sec.id)} className="hover:bg-accent/80 text-xs"> {/* Smaller text */}
                                 <UserPlus className="h-4 w-4 mr-1" /> Add Student
                              </Button>
 
@@ -338,20 +355,20 @@ export function ClassesSections() {
                         {sec.students.map((student) => (
                           <div
                              key={student.id}
-                             className="relative group border rounded-md p-2 text-center text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-900 dark:text-indigo-200 cursor-pointer hover:bg-accent hover:text-accent-foreground transition-all duration-200 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                             className="relative group border rounded-md p-2 text-center text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-900 dark:text-indigo-200 cursor-pointer hover:bg-accent hover:text-accent-foreground transition-all duration-200 shadow-sm hover:shadow-lg transform hover:-translate-y-1 border-indigo-100 dark:border-indigo-800" // Added hover transform
                            >
                              <p className="font-medium truncate" title={student.name}>{student.name}</p>
                              <p className="text-indigo-500 dark:text-indigo-400 text-[10px]">R: {student.rollNo}</p>
                              {/* Action Buttons Overlay */}
-                             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end justify-center gap-1 p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-md">
-                                 <Button variant="ghost" size="icon-xs" className="text-white hover:text-primary bg-black/30 hover:bg-black/50 h-5 w-5" onClick={() => openEditStudentModal(student, cls.id, sec.id)} title="Edit Student">
+                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-center gap-1 p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-md"> {/* Slightly darker gradient */}
+                                 <Button variant="ghost" size="icon-xs" className="text-white hover:text-primary bg-black/30 hover:bg-black/60 h-6 w-6 rounded-full" onClick={() => openEditStudentModal(student, cls.id, sec.id)} title="Edit Student"> {/* Rounded buttons */}
                                      <Edit className="h-3 w-3"/>
                                       <span className="sr-only">Edit</span>
                                  </Button>
                                   {/* Confirmation Dialog for Student Removal */}
                                   <AlertDialog>
                                      <AlertDialogTrigger asChild>
-                                        <Button variant="ghost" size="icon-xs" className="text-red-300 hover:text-destructive bg-black/30 hover:bg-black/50 h-5 w-5" title="Remove Student">
+                                        <Button variant="ghost" size="icon-xs" className="text-red-300 hover:text-destructive bg-black/30 hover:bg-black/60 h-6 w-6 rounded-full" title="Remove Student"> {/* Rounded buttons */}
                                            <Trash2 className="h-3 w-3"/>
                                             <span className="sr-only">Remove</span>
                                         </Button>
@@ -380,7 +397,10 @@ export function ClassesSections() {
                          )) */}
                       </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground text-center py-4">No students assigned yet. Click 'Add Student'.</p>
+                      <div className="text-xs text-muted-foreground text-center py-6 border border-dashed rounded-md bg-muted/10"> {/* Enhanced empty state */}
+                          <p>No students assigned yet.</p>
+                          <p>Click 'Add Student' above to populate this section.</p>
+                      </div>
                     )}
                   </div>
                 ))}

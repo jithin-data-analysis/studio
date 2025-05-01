@@ -1,3 +1,4 @@
+// src/app/admin/components/students.tsx
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -8,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -26,9 +27,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User, Edit, Trash2, Search, Filter } from 'lucide-react';
+import { User, Edit, Trash2, Search, Filter, Users } from 'lucide-react'; // Added Users icon
 import { type Student, type Class, type Section } from '@/types'; // Assuming types are defined
 import { StudentModal } from './student-modal'; // Re-use the modal
+import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'; // Import AlertDialog
 
 // Mock data - replace with API calls
 const mockClasses: Class[] = [
@@ -82,6 +85,7 @@ export function Students() {
   const [filterSectionId, setFilterSectionId] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const { toast } = useToast(); // Initialize toast
 
   // Derive available sections based on selected class for filtering
   const availableSections = useMemo(() => {
@@ -112,25 +116,25 @@ export function Students() {
     setIsModalOpen(true);
   };
 
-  const handleRemove = (studentId: string) => {
-    // Add confirmation dialog
-    setStudents(students.filter((s) => s.id !== studentId));
+  const handleRemove = (student: Student) => {
     // Add API call to delete
-    // Add toast notification
+     setStudents(students.filter((s) => s.id !== student.id));
+     toast({ title: "Student Removed", description: `${student.name} (${student.rollNo}) has been removed.`, variant: "destructive" });
   };
 
   const handleSaveStudent = (studentData: Partial<Student>) => {
       if (editingStudent) {
           // Update existing student
            setStudents(prev => prev.map(s => s.id === studentData.id ? { ...s, ...studentData } as Student : s));
+           toast({ title: "Student Updated", description: `${studentData.name}'s details have been updated.` });
            // Add API call to update
       } else {
           // This modal is primarily for editing here. Adding is done via Class/Section tab.
           console.warn("Attempted to add student from Students tab modal. Use Class/Section tab.");
+           toast({ title: "Info", description: "To add new students, please use the 'Classes & Sections' tab.", variant: "default" });
       }
        setIsModalOpen(false);
        setEditingStudent(null);
-       // Add toast notification
   };
 
    const findClassName = (classId: string) => mockClasses.find(c => c.id === classId)?.name || 'N/A';
@@ -140,29 +144,32 @@ export function Students() {
    }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Manage Students</CardTitle>
-        <CardDescription>
-          View, filter, edit, or remove student records. Adding students is done via the 'Classes & Sections' tab.
+    <Card className="shadow-md dark:shadow-indigo-900/10 border-t-4 border-primary rounded-xl overflow-hidden"> {/* Added styles */}
+       <CardHeader className="bg-gradient-to-r from-indigo-50 via-white to-teal-50 dark:from-indigo-900/20 dark:via-background dark:to-teal-900/20 p-4 md:p-6"> {/* Gradient header */}
+         <CardTitle className="text-xl md:text-2xl font-bold text-primary flex items-center gap-2">
+            <Users className="h-6 w-6"/> Manage Students
+         </CardTitle>
+        <CardDescription className="text-muted-foreground mt-1">
+          View, filter, edit, or remove student records. Adding new students is done via the 'Classes & Sections' tab for better organization.
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="flex flex-col md:flex-row gap-4 mb-6 p-4 border rounded-lg bg-muted/30 items-end">
-          <div className="relative flex-1">
+      <CardContent className="p-4 md:p-6"> {/* Adjusted padding */}
+         {/* Enhanced Filter Section */}
+        <div className="flex flex-wrap items-center gap-4 mb-6 p-4 border border-dashed border-indigo-200 dark:border-indigo-800 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10">
+          <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
               placeholder="Search by name or roll no..."
-              className="pl-8 w-full"
+              className="pl-8 w-full bg-background shadow-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           <div className="flex gap-2 flex-wrap md:flex-nowrap"> {/* Allow wrapping on smaller screens */}
-             <Filter className="h-5 w-5 text-muted-foreground mt-2 mr-1 hidden md:block" />
+             {/* <Filter className="h-5 w-5 text-muted-foreground mt-2 mr-1 hidden md:block" /> */}
              <Select value={filterClassId} onValueChange={setFilterClassId}>
-               <SelectTrigger className="w-full md:w-[160px]">
+               <SelectTrigger className="w-full md:w-[180px] bg-background shadow-sm"> {/* Adjusted width */}
                  <SelectValue placeholder="Filter by Class" />
                </SelectTrigger>
                <SelectContent>
@@ -173,12 +180,11 @@ export function Students() {
                </SelectContent>
              </Select>
               <Select value={filterSectionId} onValueChange={setFilterSectionId} disabled={filterClassId === 'all' || availableSections.length === 0}>
-               <SelectTrigger className="w-full md:w-[160px]">
+               <SelectTrigger className="w-full md:w-[180px] bg-background shadow-sm"> {/* Adjusted width */}
                  <SelectValue placeholder="Filter by Section" />
                </SelectTrigger>
                <SelectContent>
                  <SelectItem value="all">All Sections</SelectItem>
-                  {/* Removed the potentially empty value SelectItem */}
                   {availableSections.map(sec => (
                     <SelectItem key={sec.id} value={sec.id}>Section {sec.name}</SelectItem>
                  ))}
@@ -187,32 +193,34 @@ export function Students() {
           </div>
         </div>
 
-        <div className="border rounded-md overflow-hidden"> {/* Added overflow-hidden */}
+        <div className="border rounded-md overflow-hidden shadow-sm"> {/* Added shadow */}
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/50"> {/* Styled header */}
               <TableRow>
-                <TableHead>Photo</TableHead>
+                <TableHead className="w-[60px]">Photo</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Roll No.</TableHead>
                 <TableHead>Class</TableHead>
                 <TableHead>Section</TableHead>
                 <TableHead>DOB</TableHead>
                 <TableHead>Gender</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-right w-[100px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredStudents.length === 0 && (
                   <TableRow>
-                      <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                          No students found matching your criteria.
+                      <TableCell colSpan={8} className="h-24 text-center text-muted-foreground italic">
+                          {searchTerm || filterClassId !== 'all' || filterSectionId !== 'all'
+                           ? "No students found matching your criteria."
+                           : "No student data available. Add students via 'Classes & Sections'."}
                       </TableCell>
                   </TableRow>
               )}
-              {filteredStudents.map((student) => (
-                <TableRow key={student.id} className="hover:bg-muted/50 transition-colors"> {/* Added hover effect */}
+              {filteredStudents.sort((a,b) => a.rollNo.localeCompare(b.rollNo)).map((student) => ( // Sort by roll number
+                <TableRow key={student.id} className="hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors duration-150"> {/* Added hover effect */}
                   <TableCell>
-                    <Avatar className="h-9 w-9">
+                    <Avatar className="h-9 w-9 border">
                       <AvatarImage src={student.photoUrl} alt={student.name} />
                       <AvatarFallback><User size={16} /></AvatarFallback>
                     </Avatar>
@@ -224,19 +232,36 @@ export function Students() {
                   <TableCell>{student.dob}</TableCell>
                   <TableCell>{student.gender}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" onClick={() => handleEdit(student)}> {/* Added hover color */}
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-primary/10" onClick={() => handleEdit(student)} title="Edit Student"> {/* Added hover color */}
                       <Edit className="h-4 w-4" />
                        <span className="sr-only">Edit Student</span>
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:bg-destructive/10 ml-1"
-                      onClick={() => handleRemove(student.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Remove Student</span>
-                    </Button>
+                     {/* Confirmation Dialog for Student Removal */}
+                     <AlertDialog>
+                         <AlertDialogTrigger asChild>
+                             <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:bg-destructive/10 ml-1"
+                              title="Remove Student"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">Remove Student</span>
+                            </Button>
+                         </AlertDialogTrigger>
+                         <AlertDialogContent>
+                             <AlertDialogHeader>
+                                 <AlertDialogTitle>Remove {student.name} ({student.rollNo})?</AlertDialogTitle>
+                                 <AlertDialogDescription>
+                                     This will permanently remove the student record. This action cannot be undone.
+                                 </AlertDialogDescription>
+                             </AlertDialogHeader>
+                             <AlertDialogFooter>
+                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                 <AlertDialogAction onClick={() => handleRemove(student)} className={buttonVariants({variant: "destructive"})}>Remove Student</AlertDialogAction>
+                             </AlertDialogFooter>
+                         </AlertDialogContent>
+                     </AlertDialog>
                   </TableCell>
                 </TableRow>
               ))}
