@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -101,8 +102,8 @@ export function ClassReports() {
        if (!selectedClassId) return [];
        // Get unique test types for the selected class
        const types = new Set(mockTests.filter(t => t.classId === selectedClassId).map(t => t.type));
-       const uniqueTypes = Array.from(types);
-        // Ensure 'all' has a valid non-empty value if it's the only option potentially
+       const uniqueTypes = Array.from(types).filter(type => type); // Filter out empty strings if any
+        // Ensure 'all' has a valid non-empty value
        return ['all', ...uniqueTypes];
    }, [selectedClassId]);
 
@@ -149,12 +150,12 @@ export function ClassReports() {
   }, [selectedClassId, selectedTestTypeId]);
 
   // 2. Section A vs B Comparison (for selected class, subject, and test type)
-  // Returns an object { data: [], subjectName: "" } or an empty array []
+  // Returns an object { data: [], subjectName: "" } or null
   const sectionComparisonData = useMemo(() => {
-      if (!selectedClassId || selectedSubjectId === 'all') return []; // Return empty array if no specific subject
+      if (!selectedClassId || selectedSubjectId === 'all') return null; // Return null if no specific subject
 
        const cls = mockClasses.find(c => c.id === selectedClassId);
-       if (!cls) return []; // Return empty array if class not found
+       if (!cls) return null; // Return null if class not found
 
        const subjectName = mockSubjects.find(s => s.id === selectedSubjectId)?.name || '';
 
@@ -272,7 +273,6 @@ export function ClassReports() {
                    <SelectValue placeholder="Select Class" />
                  </SelectTrigger>
                  <SelectContent>
-                   <SelectItem value="">Select Class</SelectItem> {/* Add an explicit empty value option */}
                    {mockClasses.map(cls => (
                       <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
                    ))}
@@ -286,7 +286,6 @@ export function ClassReports() {
                    <SelectValue placeholder="Select Subject" />
                  </SelectTrigger>
                  <SelectContent>
-                     {/* Ensure 'all' option has a value */}
                      {availableSubjects.map(sub => (
                         <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
                      ))}
@@ -351,12 +350,12 @@ export function ClassReports() {
                      <CardHeader>
                          <CardTitle className="text-lg">Section Comparison</CardTitle>
                          <CardDescription>
-                              Class: {mockClasses.find(c=>c.id === selectedClassId)?.name} | Subject: {typeof sectionComparisonData === 'object' && sectionComparisonData.subjectName ? sectionComparisonData.subjectName : 'N/A'} | Test Type: {selectedTestTypeId === 'all' ? 'All' : selectedTestTypeId}
+                              Class: {mockClasses.find(c=>c.id === selectedClassId)?.name} | Subject: {sectionComparisonData?.subjectName ?? 'N/A'} | Test Type: {selectedTestTypeId === 'all' ? 'All' : selectedTestTypeId}
                           </CardDescription>
                      </CardHeader>
                      <CardContent>
                          {/* Check if sectionComparisonData is an object and its data array has items */}
-                         {typeof sectionComparisonData === 'object' && sectionComparisonData.data && sectionComparisonData.data.length > 0 ? (
+                         {sectionComparisonData && sectionComparisonData.data && sectionComparisonData.data.length > 0 ? (
                              <ChartContainer config={chartConfig} className="h-[300px] w-full">
                                <BarChart data={sectionComparisonData.data} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 0 }}>
                                  <CartesianGrid horizontal={false} strokeDasharray="3 3" />
