@@ -7,9 +7,9 @@ import { Toaster } from '@/components/ui/toaster'; // Import Toaster
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
-  title: 'CampusAI - AI-Powered School Progress Platform',
+  title: 'SATS - Student Academic Tracking System',
   description:
-    'Manage school structure, track student progress, and gain AI-driven insights.',
+    'GenAI-Powered Academic Tracking Platform for Students, Teachers, and Admins.',
 };
 
 export default function RootLayout({
