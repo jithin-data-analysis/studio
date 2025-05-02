@@ -1,7 +1,7 @@
 // src/app/admin/components/subjects.tsx
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react'; // Added useEffect import
 import {
   Card,
   CardContent,
@@ -81,7 +81,7 @@ export function Subjects() {
        if (!isSimulating) {
            fetchSubjects();
        }
-  }, [isSimulating]);
+  }, [isSimulating, toast]); // Added toast to dependency array
 
 
   const filteredSubjects = useMemo(() => {
