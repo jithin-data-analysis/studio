@@ -217,8 +217,9 @@ export function Students() {
                       </TableCell>
                   </TableRow>
               )}
-              {filteredStudents.sort((a,b) => a.rollNo.localeCompare(b.rollNo)).map((student) => ( // Sort by roll number
-                <TableRow key={student.id} className="hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors duration-150"> {/* Added hover effect */}
+              {filteredStudents.sort((a,b) => a.rollNo.localeCompare(b.rollNo)).map((student) => (
+                // Ensure no extra whitespace around TableRow
+                <TableRow key={student.id} className="hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors duration-150">
                   <TableCell>
                     <Avatar className="h-9 w-9 border">
                       <AvatarImage src={student.photoUrl} alt={student.name} />
