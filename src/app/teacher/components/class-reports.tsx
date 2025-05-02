@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input'; // For date range later
 import { Label } from '@/components/ui/label';
-import { BarChart, LineChart, TrendingDown, TrendingUp, Users, Filter, BookOpen, CalendarIcon } from 'lucide-react'; // Added icons
+import { BarChart, LineChart, TrendingDown, TrendingUp, Users, Filter, BookOpen, CalendarIcon, Info } from 'lucide-react'; // Added Info icon
 import {
     ChartContainer,
     ChartTooltip,
@@ -30,8 +30,10 @@ import {
 import { Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 import { type Class, type Section, type Subject, type Test, type Mark, type Student } from '@/types';
 import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
+import { Badge } from '@/components/ui/badge'; // Import Badge
+import { simulateFetchData } from '@/services/supabase'; // Import simulation helper
 
-// Mock Data (replace with actual data fetching and aggregation logic)
+// Mock Data (Used only if simulating or fetch fails)
 const mockClasses: Class[] = [
    { id: 'cls1', name: 'Grade 1', grade: 1, sections: [{ id: 'sec1a', name: 'A', classId: 'cls1', students: []},{ id: 'sec1b', name: 'B', classId: 'cls1', students: []}] },
    { id: 'cls8', name: 'Grade 8', grade: 8, sections: [{ id: 'sec8a', name: 'A', classId: 'cls8', students: []}] },
@@ -50,7 +52,7 @@ const mockTests: Test[] = [
     { id: 'test3', classId: 'cls8', sectionId: 'sec8a', subjectId: 'sub4', teacherId: 't1', date: '2024-04-10', type: 'Unit Test 1', totalMarks: 50 },
     { id: 'test4', classId: 'cls8', sectionId: 'sec8a', subjectId: 'sub3', teacherId: 't1', date: '2024-05-15', type: 'Midterm', totalMarks: 100 },
 ];
-const mockMarks = [ // Array of marks this time
+const mockMarks: Mark[] = [ // Array of marks this time
     // Grade 1, Sec A, Math, Test 1
     { id: 'm1', studentId: 'stu1', testId: 'test1', obtainedMarks: 15 },
     { id: 'm2', studentId: 'stu2', testId: 'test1', obtainedMarks: 18 },
@@ -87,11 +89,19 @@ const calculateAverage = (marks: { obtainedMarks: number }[], totalMarks: number
 
 export function ClassReports() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
-  const [selectedTestTypeId, setSelectedTestTypeId] = useState<string>('all'); // Filter by test type
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all-subjects'); // Default to non-empty value
+  const [selectedTestTypeId, setSelectedTestTypeId] = useState<string>('all-types'); // Default to non-empty value
   const [isLoading, setIsLoading] = useState(false); // Added loading state
   // Add date range filters later
   // const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+
+  // State for fetched data
+   const [students, setStudents] = useState<Student[]>([]);
+   const [tests, setTests] = useState<Test[]>([]);
+   const [marks, setMarks] = useState<Mark[]>([]);
+
+   const isSimulating = process.env.SIMULATE_AI === 'true';
+
 
   const availableSubjects = useMemo(() => {
       if (!selectedClassId) return [];
@@ -102,52 +112,71 @@ export function ClassReports() {
 
    const availableTestTypes = useMemo(() => {
        if (!selectedClassId) return [];
-       const types = new Set(mockTests.filter(t => t.classId === selectedClassId).map(t => t.type));
+       const types = new Set(tests.filter(t => t.classId === selectedClassId).map(t => t.type)); // Use fetched tests
        const uniqueTypes = Array.from(types).filter(type => type);
         // Ensure 'all' has a valid non-empty value like 'all-types'
        return ['all-types', ...uniqueTypes];
-   }, [selectedClassId]);
+   }, [selectedClassId, tests]); // Depend on fetched tests
+
+    // --- Data Fetching ---
+    useEffect(() => {
+        const fetchDataForClass = async () => {
+            if (!selectedClassId) {
+                setStudents([]);
+                setTests([]);
+                setMarks([]);
+                return;
+            }
+            setIsLoading(true);
+            try {
+                // Simulate or fetch students, tests, and marks for the class
+                const [fetchedStudents, fetchedTests, fetchedMarks] = await Promise.all([
+                    simulateFetchData('students', { classId: selectedClassId }),
+                    simulateFetchData('tests', { classId: selectedClassId }),
+                    simulateFetchData('marks', { classId: selectedClassId }) // Fetch all marks for the class initially
+                ]);
+                setStudents(fetchedStudents);
+                setTests(fetchedTests);
+                setMarks(fetchedMarks);
+            } catch (error) {
+                 console.error("Failed to fetch class data:", error);
+                 // Handle error, maybe show toast
+                 setStudents(isSimulating ? mockStudents.filter(s => s.classId === selectedClassId) : []);
+                 setTests(isSimulating ? mockTests.filter(t => t.classId === selectedClassId) : []);
+                 setMarks(isSimulating ? mockMarks : []); // Use mock data as fallback if simulating
+            } finally {
+                 setIsLoading(false);
+            }
+        };
+
+        fetchDataForClass();
+
+    }, [selectedClassId, isSimulating]); // Fetch when class changes
+
 
    // Reset filters when class changes
    useEffect(() => {
        setSelectedSubjectId('all-subjects'); // Use the non-empty value
        setSelectedTestTypeId('all-types'); // Use the non-empty value
-       // Clear data or set loading state when class changes
-       setIsLoading(true);
-       // Simulate fetching data for the new class
-       const timer = setTimeout(() => setIsLoading(false), 500);
-       return () => clearTimeout(timer);
    }, [selectedClassId]);
 
-    // Set loading state when filters change
-    useEffect(() => {
-      if (selectedClassId) { // Only trigger loading if a class is selected
-        setIsLoading(true);
-        // Simulate fetching data based on filters
-        const timer = setTimeout(() => setIsLoading(false), 300);
-        return () => clearTimeout(timer);
-      }
-    }, [selectedSubjectId, selectedTestTypeId]);
-
-
-  // --- Chart Data Calculations ---
+    // --- Chart Data Calculations ---
 
   // 1. Class Average by Subject (for selected class and test type)
   const subjectAverageData = useMemo(() => {
-      if (!selectedClassId) return [];
+      if (!selectedClassId || isLoading) return [];
 
-      const subjectsInClass = mockSubjects.filter(s => s.classId === selectedClassId);
+      const subjectsInClass = mockSubjects.filter(s => s.classId === selectedClassId); // Use mockSubjects for available subjects list
       return subjectsInClass.map(subject => {
-          const testsForSubject = mockTests.filter(t => t.classId === selectedClassId && t.subjectId === subject.id && (selectedTestTypeId === 'all-types' || t.type === selectedTestTypeId)); // Use 'all-types'
-          const marksForSubjectTests = mockMarks.filter(m => testsForSubject.some(t => t.id === m.testId));
-          const studentsInSection = mockStudents.filter(st => st.classId === selectedClassId); // Consider all students in class for avg
+          const testsForSubject = tests.filter(t => t.classId === selectedClassId && t.subjectId === subject.id && (selectedTestTypeId === 'all-types' || t.type === selectedTestTypeId));
+          const marksForSubjectTests = marks.filter(m => testsForSubject.some(t => t.id === m.testId));
+          // const studentsInSection = students.filter(st => st.classId === selectedClassId); // Already have students state
 
-          // Calculate average percentage more accurately
           const testAverages = testsForSubject.map(test => {
               const marksForTest = marksForSubjectTests.filter(m => m.testId === test.id);
               // Filter marks based on students actually in the section if test is section-specific
               const relevantMarks = test.sectionId
-                    ? marksForTest.filter(m => studentsInSection.some(st => st.id === m.studentId && st.sectionId === test.sectionId))
+                    ? marksForTest.filter(m => students.some(st => st.id === m.studentId && st.sectionId === test.sectionId))
                     : marksForTest;
               return calculateAverage(relevantMarks, test.totalMarks);
           }).filter(avg => avg !== null) as number[];
@@ -163,29 +192,29 @@ export function ClassReports() {
           };
       }).filter(d => d.average !== null);
 
-  }, [selectedClassId, selectedTestTypeId]);
+  }, [selectedClassId, selectedTestTypeId, tests, marks, students, isLoading]);
 
   // 2. Section A vs B Comparison (for selected class, subject, and test type)
   const sectionComparisonData = useMemo(() => {
-      if (!selectedClassId || selectedSubjectId === 'all-subjects') return null; // Use 'all-subjects'
+      if (!selectedClassId || selectedSubjectId === 'all-subjects' || isLoading) return null;
 
-       const cls = mockClasses.find(c => c.id === selectedClassId);
+       const cls = mockClasses.find(c => c.id === selectedClassId); // Use mockClasses to get section names/structure
        if (!cls || cls.sections.length < 2) return null; // Only compare if 2+ sections exist
 
        const subjectName = mockSubjects.find(s => s.id === selectedSubjectId)?.name || '';
 
-        const relevantTests = mockTests.filter(t =>
+        const relevantTests = tests.filter(t =>
             t.classId === selectedClassId &&
             t.subjectId === selectedSubjectId &&
-            (selectedTestTypeId === 'all-types' || t.type === selectedTestTypeId) // Use 'all-types'
+            (selectedTestTypeId === 'all-types' || t.type === selectedTestTypeId)
         );
 
         if(relevantTests.length === 0) return { data: [], subjectName };
 
        const comparison = cls.sections.map(section => {
            const sectionTests = relevantTests.filter(t => !t.sectionId || t.sectionId === section.id);
-           const studentsInSection = mockStudents.filter(st => st.classId === cls.id && st.sectionId === section.id);
-           const marksForSectionTests = mockMarks.filter(m =>
+           const studentsInSection = students.filter(st => st.classId === cls.id && st.sectionId === section.id);
+           const marksForSectionTests = marks.filter(m =>
                 sectionTests.some(t => t.testId === m.testId) &&
                 studentsInSection.some(st => st.id === m.studentId) // Ensure mark belongs to a student in this section
             );
@@ -209,28 +238,28 @@ export function ClassReports() {
 
        return { data: comparison, subjectName };
 
-  }, [selectedClassId, selectedSubjectId, selectedTestTypeId]);
+  }, [selectedClassId, selectedSubjectId, selectedTestTypeId, tests, marks, students, isLoading]);
 
 
   // 3. High/Low Scorers (Top/Bottom 5 for selected class, subject, test type)
    const scorerData = useMemo(() => {
-       if (!selectedClassId) return { top: [], bottom: [] };
+       if (!selectedClassId || isLoading) return { top: [], bottom: [] };
 
-        const relevantTests = mockTests.filter(t =>
+        const relevantTests = tests.filter(t =>
             t.classId === selectedClassId &&
-            (selectedSubjectId === 'all-subjects' || t.subjectId === selectedSubjectId) && // Use 'all-subjects'
-            (selectedTestTypeId === 'all-types' || t.type === selectedTestTypeId) // Use 'all-types'
+            (selectedSubjectId === 'all-subjects' || t.subjectId === selectedSubjectId) &&
+            (selectedTestTypeId === 'all-types' || t.type === selectedTestTypeId)
         );
 
         if (relevantTests.length === 0) return { top: [], bottom: [] };
 
         const studentAverages: { studentId: string; name: string; averagePercent: number }[] = [];
-        const studentsInClass = mockStudents.filter(s => s.classId === selectedClassId);
+        const studentsInClass = students.filter(s => s.classId === selectedClassId);
 
         studentsInClass.forEach(student => {
              // Find tests relevant to this student (either class-wide or specific to their section)
              const studentTestIds = relevantTests.filter(t => !t.sectionId || t.sectionId === student.sectionId).map(t => t.id);
-             const studentMarks = mockMarks.filter(m => m.studentId === student.id && studentTestIds.includes(m.testId));
+             const studentMarks = marks.filter(m => m.studentId === student.id && studentTestIds.includes(m.testId));
 
              let totalObtained = 0;
              let totalPossible = 0;
@@ -260,7 +289,7 @@ export function ClassReports() {
            bottom: studentAverages.slice(-5).sort((a, b) => a.averagePercent - b.averagePercent), // Bottom 5, sorted lowest first
        };
 
-   }, [selectedClassId, selectedSubjectId, selectedTestTypeId]);
+   }, [selectedClassId, selectedSubjectId, selectedTestTypeId, tests, marks, students, isLoading]);
 
 
   // Chart Configs
@@ -280,7 +309,10 @@ export function ClassReports() {
     <div className="space-y-6">
       <Card className="shadow-md dark:shadow-indigo-900/10"> {/* Added shadow */}
         <CardHeader>
-          <CardTitle>Class Performance Reports</CardTitle>
+           <CardTitle className="flex items-center gap-2">
+               Class Performance Reports
+                {isSimulating && <Badge variant="destructive">SIMULATING DATA</Badge>}
+            </CardTitle>
           <CardDescription>
             View aggregated performance data. Use filters to refine charts and lists. Data is based on entered marks.
           </CardDescription>
@@ -303,7 +335,7 @@ export function ClassReports() {
             </div>
              <div className="flex-1 grid gap-1.5">
                <Label htmlFor="reportSubject" className="text-xs font-semibold uppercase text-muted-foreground">Subject</Label>
-                <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} disabled={!selectedClassId || availableSubjects.length === 0}>
+                <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} disabled={!selectedClassId || availableSubjects.length <= 1}> {/* Disable if only "All" is there */}
                  <SelectTrigger id="reportSubject" className="bg-background">
                    <SelectValue placeholder="Select Subject" />
                  </SelectTrigger>
@@ -326,6 +358,7 @@ export function ClassReports() {
                             {type === 'all-types' ? 'All Test Types' : type}
                          </SelectItem>
                      ))}
+                      {availableTestTypes.length <=1 && <SelectItem value="loading" disabled>N/A</SelectItem>}
                  </SelectContent>
                </Select>
             </div>
@@ -370,7 +403,7 @@ export function ClassReports() {
                     <CardHeader>
                         <CardTitle className="text-lg flex items-center gap-2"><BookOpen size={18}/> Average by Subject</CardTitle>
                          <CardDescription>
-                             {selectedClassName} | Test Type: {selectedTestTypeName}
+                             {selectedClassName} | Test Type: {selectedTestTypeName} {isSimulating && <Badge variant='secondary'>Simulated Data</Badge>}
                          </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -393,7 +426,10 @@ export function ClassReports() {
                                </ResponsiveContainer>
                              </ChartContainer>
                         ) : (
-                            <div className="h-[300px] flex items-center justify-center text-muted-foreground text-center px-4">No average data available for the selected filters.</div>
+                            <div className="h-[300px] flex flex-col items-center justify-center text-muted-foreground text-center px-4">
+                                <Info className="h-8 w-8 text-muted-foreground/50 mb-2"/>
+                                No average data available for the selected filters.
+                             </div>
                         )}
                     </CardContent>
                 </Card>
@@ -403,11 +439,11 @@ export function ClassReports() {
                      <CardHeader>
                          <CardTitle className="text-lg flex items-center gap-2"><Users size={18}/> Section Comparison</CardTitle>
                          <CardDescription>
-                              {selectedClassName} | Subject: {selectedSubjectName} | Test Type: {selectedTestTypeName}
+                              {selectedClassName} | Subject: {selectedSubjectName} | Test Type: {selectedTestTypeName} {isSimulating && <Badge variant='secondary'>Simulated Data</Badge>}
                           </CardDescription>
                      </CardHeader>
                      <CardContent>
-                         {sectionComparisonData && sectionComparisonData.data && sectionComparisonData.data.length > 0 ? (
+                         {sectionComparisonData && sectionComparisonData.data.length > 0 ? (
                              <ChartContainer config={chartConfig} className="h-[300px] w-full">
                                 <ResponsiveContainer>
                                     <BarChart data={sectionComparisonData.data} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 0 }}>
@@ -426,7 +462,8 @@ export function ClassReports() {
                                 </ResponsiveContainer>
                              </ChartContainer>
                          ) : (
-                            <div className="h-[300px] flex items-center justify-center text-muted-foreground text-center px-4">
+                            <div className="h-[300px] flex flex-col items-center justify-center text-muted-foreground text-center px-4">
+                                 <Info className="h-8 w-8 text-muted-foreground/50 mb-2"/>
                                 {selectedSubjectId === 'all-subjects' ? "Select a specific subject for section comparison." : (cls && cls.sections.length < 2 ? "This class has only one section." : "No comparison data available for these filters.")}
                             </div>
                         )}
@@ -438,7 +475,7 @@ export function ClassReports() {
                      <CardHeader>
                          <CardTitle className="text-lg">Top & Bottom Performers</CardTitle>
                          <CardDescription>
-                              {selectedClassName} | Subject: {selectedSubjectName} | Test Type: {selectedTestTypeName} (Overall Average %)
+                              {selectedClassName} | Subject: {selectedSubjectName} | Test Type: {selectedTestTypeName} (Overall Average %) {isSimulating && <Badge variant='secondary'>Simulated Data</Badge>}
                           </CardDescription>
                      </CardHeader>
                      <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">

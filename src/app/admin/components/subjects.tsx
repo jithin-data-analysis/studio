@@ -29,18 +29,19 @@ import {
 } from '@/components/ui/table';
 import { PlusCircle, Trash2, Upload, Download, Eye, FileText, BookOpen, Filter, Loader2 } from 'lucide-react'; // Added Loader2
 import { type Subject, type Class } from '@/types';
-import { uploadFileAndProcessForRag } from '@/services/supabase'; // Use the RAG-enabled uploader
+import { uploadFileAndProcessForRag, simulateSaveData, simulateFetchData } from '@/services/supabase'; // Use the RAG-enabled uploader + simulation
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'; // Added AlertDialog
+import { Badge } from '@/components/ui/badge'; // Import Badge
 
-// Mock data - replace with API calls
+// Mock data - only used if simulating or fetch fails
 const mockClasses: Class[] = [
    { id: 'cls1', name: 'Grade 1', grade: 1, sections: [] },
    { id: 'cls8', name: 'Grade 8', grade: 8, sections: [] }, // Corrected ID
    { id: 'cls10', name: 'Grade 10', grade: 10, sections: [] },
 ];
 
-const mockSubjects: Subject[] = [
+const initialMockSubjects: Subject[] = [
     { id: 'sub1', name: 'Mathematics', classId: 'cls1', syllabusFileUrl: 'https://example.com/math1.pdf' },
     { id: 'sub2', name: 'English', classId: 'cls1' },
     { id: 'sub3', name: 'Mathematics', classId: 'cls8' }, // Kept corrected ID
@@ -49,14 +50,39 @@ const mockSubjects: Subject[] = [
 ];
 
 export function Subjects() {
-  const [subjects, setSubjects] = useState<Subject[]>(mockSubjects);
+  const [subjects, setSubjects] = useState<Subject[]>(initialMockSubjects); // Start with mocks for initial render
   const [newSubjectName, setNewSubjectName] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [filterClassId, setFilterClassId] = useState<string>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingSubjectId, setUploadingSubjectId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false); // Added uploading state
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
   const { toast } = useToast();
+
+  const isSimulating = process.env.SIMULATE_AI === 'true';
+
+  // --- Data Fetching ---
+  useEffect(() => {
+      const fetchSubjects = async () => {
+          setIsLoadingSubjects(true);
+          try {
+              const fetchedSubjects = await simulateFetchData('subjects'); // Fetch all subjects initially
+              setSubjects(fetchedSubjects);
+          } catch (error) {
+              console.error("Failed to fetch subjects:", error);
+              toast({ title: "Fetch Error", description: "Could not load subjects.", variant: "destructive" });
+              if (isSimulating) setSubjects(initialMockSubjects); // Fallback to mocks if simulating
+          } finally {
+              setIsLoadingSubjects(false);
+          }
+      };
+       // Fetch only if not simulating, otherwise keep initial mocks
+       if (!isSimulating) {
+           fetchSubjects();
+       }
+  }, [isSimulating]);
+
 
   const filteredSubjects = useMemo(() => {
     if (filterClassId === 'all') return subjects;
@@ -74,34 +100,51 @@ export function Subjects() {
         return;
     }
 
-    const newSubject: Subject = {
-      id: `sub${Date.now()}`, // Temporary ID
+    const newSubjectData = {
+      // id: isSimulating ? `sim-sub-${Date.now()}` : undefined, // Let DB handle ID if not simulating
       name: newSubjectName.trim(),
       classId: selectedClassId,
     };
+     const tempId = `temp-sub-${Date.now()}`; // Temporary client-side ID
+     const newSubjectWithTempId = {...newSubjectData, id: tempId};
 
-    // Add API call to save the subject
+    // Optimistically update UI
+    setSubjects(prev => [...prev, newSubjectWithTempId]);
+    setNewSubjectName('');
+    setSelectedClassId('');
+
     try {
-        // await api.createSubject(newSubject); // Replace with actual API call
-        setSubjects([...subjects, newSubject]);
-        setNewSubjectName('');
-        setSelectedClassId('');
-        toast({ title: "Subject Added!", description: `"${newSubject.name}" is ready for ${findClassName(selectedClassId)}.`, });
+         // Simulate or perform actual save
+        await simulateSaveData(newSubjectData, 'subjects'); // Send data without temp ID
+        // In a real app, you'd get the actual ID back and update the state:
+        // const savedSubject = await api.createSubject(newSubjectData);
+        // setSubjects(prev => prev.map(s => s.id === tempId ? savedSubject : s));
+        toast({ title: `Subject Added! ${isSimulating ? '(Simulated)' : ''}`, description: `"${newSubjectData.name}" is ready for ${findClassName(selectedClassId)}.`, });
     } catch (error) {
         console.error("Failed to add subject:", error);
-        toast({ title: "Add Error", description: "Could not add subject. Please try again.", variant: "destructive" });
+        toast({ title: "Add Error", description: `Could not add subject. ${isSimulating ? '(Simulated)' : ''}`, variant: "destructive" });
+         // Revert optimistic update on error
+        setSubjects(prev => prev.filter(s => s.id !== tempId));
     }
   };
 
   const handleRemoveSubject = async (subject: Subject) => { // Pass full subject object
-    // Add API call to delete
-     try {
-        // await api.deleteSubject(subjectId); // Replace with actual API call
-        setSubjects(subjects.filter((sub) => sub.id !== subject.id));
-        toast({ title: "Subject Removed", description: `"${subject.name}" for ${findClassName(subject.classId)} has been removed.`, variant: "destructive" });
+     const subjectIdToRemove = subject.id;
+     const subjectName = subject.name;
+     const className = findClassName(subject.classId);
+
+     // Optimistically remove from UI
+     setSubjects(prev => prev.filter((sub) => sub.id !== subjectIdToRemove));
+
+    try {
+         // Simulate or perform actual delete
+         await simulateSaveData({ id: subjectIdToRemove }, 'subjects_delete'); // Use a specific type or method for delete simulation/call
+        toast({ title: `Subject Removed ${isSimulating ? '(Simulated)' : ''}`, description: `"${subjectName}" for ${className} has been removed.`, variant: "destructive" });
     } catch (error) {
         console.error("Failed to remove subject:", error);
-        toast({ title: "Remove Error", description: "Could not remove subject. Please try again.", variant: "destructive" });
+        toast({ title: "Remove Error", description: `Could not remove subject. ${isSimulating ? '(Simulated)' : ''}`, variant: "destructive" });
+         // Revert optimistic update on error
+         setSubjects(prev => [...prev, subject].sort((a, b) => a.name.localeCompare(b.name))); // Add back and re-sort
     }
   };
 
@@ -122,7 +165,8 @@ export function Subjects() {
     if (!subject) return;
 
     setIsUploading(true); // Set loading state
-    setUploadingSubjectId(null); // Reset immediately
+    const originalSubjectState = { ...subject }; // Store original state for potential revert
+    setUploadingSubjectId(subjectIdToUpdate); // Keep track while uploading
 
     // Basic validation (e.g., file type, size) - Add more robust checks
     const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
@@ -130,45 +174,63 @@ export function Subjects() {
         toast({ title: "Invalid File Type", description: "Please upload a PDF, DOC, or DOCX file.", variant: "destructive" });
          if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
          setIsUploading(false);
+         setUploadingSubjectId(null);
         return;
     }
 
      // Show uploading indicator/toast
-     const uploadToast = toast({ title: "Uploading & Processing Syllabus...", description: `Working on ${file.name}... This might take a moment.` });
+     const uploadToast = toast({
+         title: `Uploading & Processing Syllabus ${isSimulating ? '(Simulating)' : ''}...`,
+         description: `Working on ${file.name}... This might take a moment.`
+     });
 
     try {
-      // Use the service function that includes RAG processing
-      const { fileUrl } = await uploadFileAndProcessForRag(file, `syllabi/${subject.classId}/${subject.id}/`);
+      // Use the service function that includes RAG processing (and simulation check)
+      const pathPrefix = `syllabi/${subject.classId}/${subject.id}/`;
+      const { fileUrl } = await uploadFileAndProcessForRag(file, pathPrefix);
 
       // Update subject in state and potentially via API
-       // await api.updateSubjectSyllabus(subjectIdToUpdate, fileUrl); // Replace with actual API call
+       const updatedSubjectData = { syllabusFileUrl: fileUrl };
+       // Simulate or perform actual update
+       await simulateSaveData({ id: subjectIdToUpdate, ...updatedSubjectData }, 'subjects_update'); // Simulate/call update
+
+       // Update UI state
       setSubjects((prevSubjects) =>
         prevSubjects.map((sub) =>
           sub.id === subjectIdToUpdate ? { ...sub, syllabusFileUrl: fileUrl } : sub
         )
       );
 
-      uploadToast.update({ id: uploadToast.id, title: "Upload & Processing Complete!", description: `Syllabus for ${subject.name} updated and indexed for AI analysis.` });
+      uploadToast.update({ id: uploadToast.id, title: `Upload & Processing Complete! ${isSimulating ? '(Simulated)' : ''}`, description: `Syllabus for ${subject.name} updated and indexed for AI analysis.` });
 
     } catch (error) {
       console.error('Upload or RAG processing failed:', error);
-       let errorMsg = "Could not upload/process the syllabus. Please try again.";
-       if (error instanceof Error && error.message.includes("RAG processing")) {
+       let errorMsg = `Could not upload/process the syllabus. ${isSimulating ? '(Simulated)' : ''}`;
+       if (!isSimulating && error instanceof Error && error.message.includes("RAG processing")) {
            errorMsg = `File uploaded, but RAG processing failed: ${error.message.split(': ').slice(1).join(': ')}`;
            // Update UI even if RAG fails, maybe with a warning?
-            setSubjects((prevSubjects) =>
-                prevSubjects.map((sub) =>
-                    sub.id === subjectIdToUpdate ? { ...sub, syllabusFileUrl: `https://example.com/syllabi/${subject.classId}/${subject.id}/${encodeURIComponent(file.name)}` } : sub // Update with simulated URL anyway
-                )
-            );
+            // setSubjects((prevSubjects) =>
+            //     prevSubjects.map((sub) =>
+            //         sub.id === subjectIdToUpdate ? { ...sub, syllabusFileUrl: `https://example.com/${pathPrefix}${encodeURIComponent(file.name)}` } : sub // Update with simulated URL anyway
+            //     )
+            // );
+       } else if (error instanceof Error) {
+            errorMsg = error.message; // Use the error message directly
        }
        uploadToast.update({ id: uploadToast.id, title: "Upload/Processing Failed", description: errorMsg, variant: "destructive" });
+       // Revert UI state if necessary (optional, depends on desired UX)
+        // setSubjects((prevSubjects) =>
+        //     prevSubjects.map((sub) =>
+        //         sub.id === subjectIdToUpdate ? originalSubjectState : sub
+        //     )
+        // );
     } finally {
        // Reset file input value to allow re-uploading the same file
         if (fileInputRef.current) {
             fileInputRef.current.value = "";
         }
         setIsUploading(false); // Reset loading state
+        setUploadingSubjectId(null); // Clear uploading ID
     }
   };
 
@@ -179,6 +241,7 @@ export function Subjects() {
        <CardHeader className="bg-gradient-to-r from-indigo-50 via-white to-teal-50 dark:from-indigo-900/20 dark:via-background dark:to-teal-900/20 p-4 md:p-6"> {/* Gradient header */}
          <CardTitle className="text-xl md:text-2xl font-bold text-primary flex items-center gap-2">
             <BookOpen className="h-6 w-6"/> Manage Subjects & Syllabi
+             {isSimulating && <Badge variant="destructive">SIMULATING</Badge>}
          </CardTitle>
         <CardDescription className="text-muted-foreground mt-1">
           Define subjects and upload syllabus documents. Uploaded syllabi are processed for AI analysis (RAG).
@@ -215,7 +278,7 @@ export function Subjects() {
               className="self-end mt-4 md:mt-0 transition-transform transform hover:scale-105 shadow hover:shadow-lg"
               disabled={!newSubjectName || !selectedClassId}
             >
-            <PlusCircle className="mr-2 h-4 w-4" /> Add Subject
+            <PlusCircle className="mr-2 h-4 w-4" /> Add Subject {isSimulating && '(Sim)'}
           </Button>
         </div>
 
@@ -257,14 +320,24 @@ export function Subjects() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredSubjects.length === 0 && (
+               {isLoadingSubjects && (
+                    <TableRow>
+                        <TableCell colSpan={4} className="h-24 text-center">
+                            <div className="flex justify-center items-center gap-2 text-muted-foreground">
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                                <span>Loading subjects...</span>
+                             </div>
+                         </TableCell>
+                    </TableRow>
+               )}
+              {!isLoadingSubjects && filteredSubjects.length === 0 && (
                   <TableRow>
                       <TableCell colSpan={4} className="h-24 text-center text-muted-foreground italic">
                            {filterClassId !== 'all' ? `No subjects found for ${findClassName(filterClassId)}.` : "No subjects defined yet. Add subjects above!"}
                       </TableCell>
                   </TableRow>
               )}
-              {filteredSubjects.sort((a,b) => a.name.localeCompare(b.name)).map((subject) => (
+              {!isLoadingSubjects && filteredSubjects.sort((a,b) => a.name.localeCompare(b.name)).map((subject) => (
                  <TableRow key={subject.id} className="hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors duration-150"> {/* Added hover effect */}
                   <TableCell className="font-medium">{subject.name}</TableCell>
                   <TableCell>{findClassName(subject.classId)}</TableCell>

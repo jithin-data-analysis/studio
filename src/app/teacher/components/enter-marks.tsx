@@ -1,7 +1,7 @@
 // src/app/teacher/components/enter-marks.tsx
 'use client';
 
-import React, { useState, useMemo, useEffect, useRef } from 'react'; // Added useRef
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Card,
   CardContent,
@@ -33,7 +33,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'; // Import Table components
+} from '@/components/ui/table';
 import {
   PlusCircle,
   Trash2,
@@ -50,15 +50,18 @@ import {
   Printer,
   Sparkles,
   ChevronDown,
-  FileSpreadsheet, // Icon for CSV Upload
-  Edit, // Import the Edit icon
+  FileSpreadsheet,
+  Edit,
+  BadgeHelp
 } from 'lucide-react';
-import { type Class, type Subject, type CoCurricularActivity, type Student, type Test as TestType, type Mark } from '@/types'; // Added TestType and Mark
+import { type Class, type Subject, type CoCurricularActivity, type Student, type Test as TestType, type Mark } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator'; // Import Separator
-import { generateStudentInsights } from '@/ai/flows/generate-student-insights'; // Import the AI flow
+import { Separator } from '@/components/ui/separator';
+import { generateStudentInsights } from '@/ai/flows/generate-student-insights';
+import { uploadFileAndProcessForRag, simulateSaveData, simulateFetchData } from '@/services/supabase'; // Import simulation helpers
+import { Badge } from '@/components/ui/badge'; // Import Badge
 
 // Define a type for the test form data within the component
 interface TestFormData {
@@ -76,7 +79,7 @@ interface TestFormData {
     type?: string; // Optional test type like Midterm, Final etc.
 }
 
-// Mock data - replace with API calls
+// Mock data - replace with API calls or simulation fetch
 const mockClasses: Class[] = [
    {
     id: 'cls1', name: 'Grade 1', grade: 1, sections: [{id: 'sec1a', name: 'A', classId: 'cls1', students: []}, {id: 'sec1b', name: 'B', classId: 'cls1', students: []}]
@@ -115,8 +118,8 @@ const mockSyllabus = {
      }
 };
 
-// Mock saved tests (replace with API fetch)
-const mockSavedTests: TestFormData[] = [
+// Mock saved tests (will be populated by fetch/simulation)
+const initialSavedTests: TestFormData[] = [
      { id: 'test1-math-cls1', name: 'Unit Test 1', date: '2024-05-10', totalMarks: 20, file: null, chapters: ['chap3'], topics: ['top5','top6'], classId: 'cls1', subjectId: 'sub1'},
      { id: 'test2-math-cls8', name: 'Midterm Exam', date: '2024-05-15', totalMarks: 50, file: null, chapters: ['chap1','chap2'], topics: ['top1', 'top3'], classId: 'cls8', subjectId: 'sub3'},
 ];
@@ -128,18 +131,21 @@ export function EnterMarks() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
   const [definedTests, setDefinedTests] = useState<TestFormData[]>([]); // Tests being defined/edited
-  const [savedTests, setSavedTests] = useState<TestFormData[]>(mockSavedTests); // Tests already saved (from DB)
+  const [savedTests, setSavedTests] = useState<TestFormData[]>(process.env.SIMULATE_AI === 'true' ? initialSavedTests : []); // Load initial mocks only if simulating
   const [selectedTestForMarks, setSelectedTestForMarks] = useState<string>(''); // ID of the test selected for mark entry
   const [studentsForMarkEntry, setStudentsForMarkEntry] = useState<Student[]>([]); // Students for the selected test's class/section
   const [studentMarks, setStudentMarks] = useState<{ [studentId: string]: number | '' }>({}); // Marks being entered
   const [isSavingTests, setIsSavingTests] = useState(false);
   const [isSavingMarks, setIsSavingMarks] = useState(false);
+  const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  const [isLoadingTests, setIsLoadingTests] = useState(false);
   const [activeAccordionItems, setActiveAccordionItems] = useState<string[]>([]);
   const csvInputRef = useRef<HTMLInputElement>(null); // Ref for CSV input
   const { toast } = useToast();
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]); // State for analysis results
   const [isAnalyzing, setIsAnalyzing] = useState<{[studentId: string]: boolean}>({}); // Track analysis status per student
 
+  const isSimulating = process.env.SIMULATE_AI === 'true';
 
   const availableSubjects = useMemo(() => {
       if (!selectedClassId) return [];
@@ -168,7 +174,8 @@ export function EnterMarks() {
        setStudentsForMarkEntry([]);
        setStudentMarks({});
        setAnalysisResults([]); // Clear analysis results
-   }, [selectedClassId]);
+       setSavedTests(isSimulating ? initialSavedTests : []); // Reset saved tests (keep mocks if simulating)
+   }, [selectedClassId, isSimulating]);
 
     useEffect(() => { // Reset tests and mark entry section when subject changes
        setDefinedTests([]);
@@ -177,38 +184,82 @@ export function EnterMarks() {
        setStudentsForMarkEntry([]);
        setStudentMarks({});
        setAnalysisResults([]); // Clear analysis results
+       fetchSavedTests(); // Fetch tests for the new subject
    }, [selectedSubjectId]);
 
-    useEffect(() => { // Fetch students and potentially existing marks when a test is selected for marking
-        if (selectedTestForMarks) {
-            const testDetails = savedTests.find(t => t.id === selectedTestForMarks);
-            if (testDetails) {
-                // Fetch students for the test's class/section
-                // In a real app, filter based on sectionId if the test is section-specific
-                const relevantStudents = mockStudents.filter(s => s.classId === testDetails.classId /* && s.sectionId === testDetails.sectionId */ );
-                setStudentsForMarkEntry(relevantStudents.sort((a,b) => a.rollNo.localeCompare(b.rollNo))); // Sort by roll number
+    // Fetch saved tests when class/subject changes
+    const fetchSavedTests = async () => {
+        if (!selectedClassId || !selectedSubjectId) {
+             setSavedTests(isSimulating ? initialSavedTests : []);
+             return;
+        }
+        setIsLoadingTests(true);
+        try {
+            const fetchedTests: TestFormData[] = await simulateFetchData('tests', { classId: selectedClassId, subjectId: selectedSubjectId });
+             // Ensure totalMarks is a number or empty string
+            const cleanedTests = fetchedTests.map(test => ({
+                ...test,
+                totalMarks: typeof test.totalMarks === 'number' ? test.totalMarks : ''
+            }));
+            setSavedTests(cleanedTests);
+        } catch (error) {
+            console.error("Failed to fetch saved tests:", error);
+            toast({ title: "Fetch Error", description: "Could not load saved tests.", variant: "destructive" });
+            setSavedTests(isSimulating ? initialSavedTests : []); // Fallback to mocks if simulating, else empty
+        } finally {
+            setIsLoadingTests(false);
+        }
+    };
 
-                // Fetch existing marks for these students for this test (mocked for now)
-                const existingMarks: { [studentId: string]: number | '' } = {};
-                relevantStudents.forEach(student => {
-                     // Mock: check if marks exist for student/test combo
-                     // const mark = await fetchMark(student.id, testDetails.id);
-                     // existingMarks[student.id] = mark ? mark.obtainedMarks : '';
-                     existingMarks[student.id] = ''; // Default to empty
-                });
-                setStudentMarks(existingMarks);
-                setAnalysisResults([]); // Clear analysis when test changes
-            } else {
+
+    useEffect(() => { // Fetch students when a test is selected for marking
+        const fetchStudents = async () => {
+            if (!selectedTestForMarks) {
                 setStudentsForMarkEntry([]);
                 setStudentMarks({});
                 setAnalysisResults([]);
+                return;
             }
-        } else {
-            setStudentsForMarkEntry([]);
-            setStudentMarks({});
-            setAnalysisResults([]);
-        }
-   }, [selectedTestForMarks, savedTests]); // Re-run when selected test changes
+
+            const testDetails = savedTests.find(t => t.id === selectedTestForMarks);
+            if (!testDetails) {
+                 setStudentsForMarkEntry([]);
+                 setStudentMarks({});
+                 setAnalysisResults([]);
+                 return;
+            }
+
+            setIsLoadingStudents(true);
+            try {
+                // Fetch students for the test's class/section
+                 // Use sectionId from testDetails if available for filtering
+                 const sectionIdToFilter = testDetails.sectionId; // Assuming TestFormData might have sectionId
+                const fetchedStudents: Student[] = await simulateFetchData('students', { classId: testDetails.classId, sectionId: sectionIdToFilter });
+                setStudentsForMarkEntry(fetchedStudents.sort((a,b) => a.rollNo.localeCompare(b.rollNo)));
+
+                // Fetch existing marks (simulated)
+                const existingMarks: { [studentId: string]: number | '' } = {};
+                 // In real app: const marksData = await simulateFetchData('marks', { testId: selectedTestForMarks });
+                 // fetchedStudents.forEach(student => {
+                 //     const mark = marksData.find(m => m.studentId === student.id);
+                 //     existingMarks[student.id] = mark ? mark.obtainedMarks : '';
+                 // });
+                fetchedStudents.forEach(student => { existingMarks[student.id] = ''; }); // Initialize empty
+                setStudentMarks(existingMarks);
+                setAnalysisResults([]);
+            } catch (error) {
+                console.error("Failed to fetch students or marks:", error);
+                toast({ title: "Fetch Error", description: "Could not load student list or existing marks.", variant: "destructive" });
+                setStudentsForMarkEntry([]);
+                setStudentMarks({});
+                setAnalysisResults([]);
+            } finally {
+                 setIsLoadingStudents(false);
+            }
+        };
+
+        fetchStudents();
+   }, [selectedTestForMarks, savedTests]); // Re-run when selected test or saved tests change
 
 
   // --- Handlers for Defining Tests ---
@@ -258,7 +309,7 @@ export function EnterMarks() {
       }));
   };
 
-  const handleFileChange = (testId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (testId: string, event: React.ChangeEvent<HTMLInputElement>) => {
       if (event.target.files && event.target.files[0]) {
           const file = event.target.files[0];
            const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
@@ -267,7 +318,24 @@ export function EnterMarks() {
                 if (event.target) event.target.value = "";
                 return;
            }
-          handleTestChange(testId, 'file', file);
+           // Immediately update the file state for UI feedback
+           handleTestChange(testId, 'file', file);
+
+           // Simulate or perform upload and store URL
+           try {
+                // Use a specific path for test papers
+                const pathPrefix = `tests/${selectedClassId}/${selectedSubjectId}/${testId}/`;
+                const { fileUrl } = await uploadFileAndProcessForRag(file, pathPrefix); // Use simulation-aware uploader
+                handleTestChange(testId, 'fileUrl', fileUrl); // Store the URL
+                 toast({ title: `File ${isSimulating ? 'Simulated Upload' : 'Uploaded'}`, description: `${file.name} linked to the test.` });
+           } catch (uploadError) {
+                console.error("File upload/processing failed:", uploadError);
+                toast({ title: "Upload Failed", description: `Could not upload or process ${file.name}.`, variant: "destructive" });
+                // Optionally revert file state if upload fails critically
+                // handleTestChange(testId, 'file', null);
+           }
+            // Reset file input value to allow re-uploading the same file
+            if (event.target) event.target.value = "";
       }
   };
 
@@ -352,38 +420,39 @@ export function EnterMarks() {
 
     const testsToSave = definedTests.map(test => ({
         // Map to the actual TestType structure for saving
+        // id: test.id, // Let DB generate ID or use temp for simulation mapping
         classId: test.classId,
         subjectId: test.subjectId,
         name: test.name,
         date: test.date,
         totalMarks: test.totalMarks as number, // Cast after validation
-        // file: test.file, // Handle file upload separately
+        testPaperUrl: test.fileUrl, // Use stored URL
         syllabusChapters: test.chapters,
         syllabusTopics: test.topics,
         type: test.type // Include if you added this field
     }));
 
     try {
-        console.log("Saving Defined Tests:", testsToSave);
-        // Simulate API call(s) to save tests and upload files
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Simulate or perform actual save
+        await simulateSaveData(testsToSave, 'tests');
 
-        // Mock: Update savedTests state and clear definedTests
-        const newlySavedTests = definedTests.map(test => ({
+        // Update savedTests state and clear definedTests
+        const newlySavedTests = definedTests.map((test, index) => ({
             ...test,
-            id: `saved-${test.id}`, // Replace temp ID with actual ID from DB
+            // In a real app, use the ID returned from the database
+            // For simulation, create a predictable or slightly different ID
+            id: isSimulating ? `sim-saved-${test.id}` : `db-saved-${Date.now() + index}`,
             totalMarks: test.totalMarks as number, // Ensure it's number
-            // fileUrl: '...' // Get actual URL if file uploaded
         }));
         setSavedTests(prev => [...prev, ...newlySavedTests]);
         setDefinedTests([]); // Clear the definition section
         setActiveAccordionItems([]);
 
-        toast({ title: "Tests Saved", description: `${definedTests.length} new test(s) defined successfully. You can now select them for mark entry.` });
+        toast({ title: `Tests Saved ${isSimulating ? '(Simulated)' : ''}`, description: `${definedTests.length} new test(s) defined successfully. You can now select them for mark entry.` });
 
     } catch (error) {
         console.error("Failed to save tests:", error);
-        toast({ title: "Save Failed", description: "Could not save test definitions. Please try again.", variant: "destructive" });
+        toast({ title: "Save Failed", description: `Could not save test definitions. ${isSimulating ? '(Simulated)' : ''}`, variant: "destructive" });
     } finally {
         setIsSavingTests(false);
     }
@@ -435,6 +504,7 @@ export function EnterMarks() {
               // historicalContext: fetchHistoricalData(student.id, subject.id),
           };
 
+          // Call the flow (handles its own simulation)
           const result = await generateStudentInsights(input);
 
           // Create a combined insight string or use a specific part
@@ -452,11 +522,17 @@ export function EnterMarks() {
               }
           });
 
-           toast({ title: `Analyzed ${student.name}`, description: "AI insights generated successfully." });
+           toast({ title: `Analyzed ${student.name} ${isSimulating ? '(Simulated)' : ''}`, description: "AI insights generated successfully." });
 
       } catch (error: any) {
           console.error(`Failed to analyze student ${student.id}:`, error);
-          toast({ title: "Analysis Failed", description: `Could not generate insights for ${student.name}. ${error.message || ''}`, variant: "destructive" });
+          let errorMsg = `Could not generate insights for ${student.name}.`;
+            if (process.env.SIMULATE_AI !== 'true' && error.message?.includes('GOOGLE_GENAI_API_KEY')) {
+                errorMsg = 'Missing Google API Key. Set SIMULATE_AI=true in .env to test without keys.'
+            } else {
+                 errorMsg += ` ${error.message || ''}`;
+            }
+          toast({ title: "Analysis Failed", description: errorMsg, variant: "destructive" });
       } finally {
           setIsAnalyzing(prev => ({...prev, [student.id]: false})); // Reset analyzing state
       }
@@ -469,11 +545,10 @@ export function EnterMarks() {
          return;
      }
 
-     // Optional: Check if all marks are entered
      const allMarksEntered = studentsForMarkEntry.every(student => studentMarks[student.id] !== '');
      if (!allMarksEntered) {
-         // Maybe show a warning dialog instead of preventing save?
-         // For now, allow saving partial marks
+         // Consider showing a confirmation dialog instead of just a toast
+         console.warn("Some student marks are missing.");
          // toast({ title: "Incomplete Marks", description: "Some student marks are missing. Save anyway?", variant: "default" });
      }
 
@@ -492,25 +567,15 @@ export function EnterMarks() {
      }
 
      try {
-         console.log("Saving Marks:", marksToSave);
-         // Simulate API call to save/update marks
-         await new Promise(resolve => setTimeout(resolve, 1000));
+         // Simulate or perform actual save
+         await simulateSaveData(marksToSave, 'marks');
 
-         // --- Trigger AI Marks Analysis (Potentially trigger for all students after save) ---
-         // You might want a button to analyze all students or trigger it here
-         // studentsForMarkEntry.forEach(student => {
-         //     if (studentMarks[student.id] !== '') {
-         //         handleAnalyzeStudent(student); // Consider potential rate limits
-         //     }
-         // });
-         // -------------------------------------------------
-
-         toast({ title: "Marks Saved", description: `Marks for ${savedTests.find(t=>t.id===selectedTestForMarks)?.name} saved successfully.` });
+         toast({ title: `Marks Saved ${isSimulating ? '(Simulated)' : ''}`, description: `Marks for ${savedTests.find(t=>t.id===selectedTestForMarks)?.name} saved.` });
          // Optionally clear marks after save or refetch?
          // setStudentMarks({}); // Clear marks form
      } catch (error) {
          console.error("Failed to save marks:", error);
-         toast({ title: "Save Failed", description: "Could not save marks. Please try again.", variant: "destructive" });
+         toast({ title: "Save Failed", description: `Could not save marks. ${isSimulating ? '(Simulated)' : ''}`, variant: "destructive" });
      } finally {
          setIsSavingMarks(false);
      }
@@ -542,16 +607,19 @@ export function EnterMarks() {
              if (lines.length < 2) throw new Error("CSV must have at least a header and one data row.");
 
              const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-             const rollNoIndex = headers.indexOf('roll no'); // Case insensitive search
-             const marksIndex = headers.indexOf('marks');
+             // More flexible header matching
+             const rollNoIndex = headers.findIndex(h => h.includes('roll') && h.includes('no'));
+             const marksIndex = headers.findIndex(h => h.includes('mark') || h.includes('score') || h.includes('obtained'));
+
 
              if (rollNoIndex === -1 || marksIndex === -1) {
-                 throw new Error("CSV must contain 'Roll No' and 'Marks' columns.");
+                 throw new Error("CSV must contain columns identifiable as 'Roll No' and 'Marks/Score'.");
              }
 
              const updatedMarks: { [studentId: string]: number | '' } = { ...studentMarks };
              let importedCount = 0;
              let errorCount = 0;
+             const notFoundRollNos: string[] = [];
 
              for (let i = 1; i < lines.length; i++) {
                  const values = lines[i].split(',');
@@ -563,6 +631,7 @@ export function EnterMarks() {
                  const student = studentsForMarkEntry.find(s => s.rollNo === rollNo);
                  if (!student) {
                       console.warn(`Student with Roll No ${rollNo} not found in the current list.`);
+                      if (!notFoundRollNos.includes(rollNo)) notFoundRollNos.push(rollNo);
                       errorCount++;
                       continue;
                  }
@@ -582,9 +651,17 @@ export function EnterMarks() {
              }
 
              setStudentMarks(updatedMarks);
+              let description = `${importedCount} marks imported. `;
+              if (notFoundRollNos.length > 0) {
+                  description += `${notFoundRollNos.length} roll numbers not found: ${notFoundRollNos.slice(0, 5).join(', ')}${notFoundRollNos.length > 5 ? '...' : ''}. `;
+              }
+              if (errorCount > notFoundRollNos.length) {
+                   description += `${errorCount - notFoundRollNos.length} invalid mark entries.`
+              }
              toast({
                 title: "CSV Processed",
-                description: `${importedCount} marks imported. ${errorCount > 0 ? `${errorCount} errors (check console for details).` : 'No errors.'}`
+                description: description.trim(),
+                duration: notFoundRollNos.length > 0 || errorCount > 0 ? 10000 : 5000 // Longer duration if errors
             });
 
           } catch (parseError: any) {
@@ -628,22 +705,33 @@ export function EnterMarks() {
       // Add some basic styling
       printWindow.document.write(`
           <style>
-              body { font-family: sans-serif; line-height: 1.5; padding: 20px; }
-              h1, h2 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-              p { margin: 10px 0; }
-              .section { margin-bottom: 15px; padding-left: 10px; border-left: 3px solid #007bff; }
-              .label { font-weight: bold; color: #555; }
+              body { font-family: sans-serif; line-height: 1.5; padding: 20px; color: #333; }
+              h1, h2 { color: #1e40af; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-top: 20px; margin-bottom: 10px; }
+              h1 { font-size: 1.5em; }
+              h2 { font-size: 1.2em; }
+              p { margin: 5px 0; }
+              .section { margin-bottom: 15px; padding-left: 10px; border-left: 3px solid #60a5fa; background-color: #f0f9ff; padding: 10px; border-radius: 4px; }
+              .label { font-weight: bold; color: #555; min-width: 120px; display: inline-block;}
+              .info-grid { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; margin-bottom: 15px;}
+              .print-only { display: block !important; } /* Ensure visibility */
+              .no-print { display: none !important; } /* Hide buttons in print */
+               @media print {
+                    .no-print { display: none !important; }
+                    body { padding: 10px; } /* Adjust padding for print */
+               }
           </style>
       `);
       printWindow.document.write('</head><body>');
-      printWindow.document.write(`<h1>Student Analysis Report</h1>`);
-      printWindow.document.write(`<p><span class="label">Student:</span> ${student.name} (Roll: ${student.rollNo})</p>`);
-      printWindow.document.write(`<p><span class="label">Test:</span> ${test.name} (${test.date})</p>`);
-      printWindow.document.write(`<p><span class="label">Subject:</span> ${mockSubjects.find(s => s.id === test.subjectId)?.name || 'N/A'}</p>`);
-      printWindow.document.write(`<p><span class="label">Marks Obtained:</span> ${marks}/${test.totalMarks}</p>`);
+      printWindow.document.write(`<h1>Student Analysis Report ${isSimulating ? '<span style="font-size: 0.7em; color: red;">(Simulated)</span>' : ''}</h1>`);
+       printWindow.document.write('<div class="info-grid">');
+      printWindow.document.write(`<span class="label">Student:</span> <span>${student.name} (Roll: ${student.rollNo})</span>`);
+      printWindow.document.write(`<span class="label">Test:</span> <span>${test.name} (${test.date})</span>`);
+      printWindow.document.write(`<span class="label">Subject:</span> <span>${mockSubjects.find(s => s.id === test.subjectId)?.name || 'N/A'}</span>`);
+      printWindow.document.write(`<span class="label">Marks Obtained:</span> <span>${marks}/${test.totalMarks}</span>`);
+      printWindow.document.write('</div>');
       printWindow.document.write(`<h2>AI Insights</h2>`);
       // Format the insights nicely - assuming insightText format from handleAnalyzeStudent
-      const insightsParts = analysis.insights.split('. ').filter(part => part);
+      const insightsParts = analysis.insights.split('. ').filter(part => part.trim());
       insightsParts.forEach(part => {
           const [label, ...textParts] = part.split(':');
           const text = textParts.join(':').trim();
@@ -653,9 +741,21 @@ export function EnterMarks() {
               printWindow.document.write(`</div>`);
           }
       });
+
+       // Add print button within the printable content
+        printWindow.document.write(`
+            <button class="no-print" onclick="window.print()" style="margin-top: 20px; padding: 10px 15px; background-color: #1e40af; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                Print Report
+            </button>
+        `);
+
       printWindow.document.write('</body></html>');
       printWindow.document.close();
-      printWindow.print();
+      // Delay print command slightly to ensure content is rendered
+      setTimeout(() => {
+         printWindow.focus(); // Focus the new window
+         // printWindow.print(); // Removed: Print triggered by button inside the window
+      }, 500);
   }
 
 
@@ -710,6 +810,7 @@ export function EnterMarks() {
         <CardHeader className="p-4 md:p-6">
            <CardTitle className="text-xl md:text-2xl font-bold text-teal-700 dark:text-teal-300 flex items-center gap-2 animate-fade-in-down">
                <ClipboardList className="h-6 w-6 text-teal-500"/> Define New Tests
+               {isSimulating && <Badge variant="destructive">SIMULATING</Badge>}
            </CardTitle>
            <CardDescription className="text-muted-foreground mt-1 animate-fade-in-down animation-delay-100">Add details for new tests for the selected class and subject. Saved tests will appear in the 'Enter Marks' section.</CardDescription>
         </CardHeader>
@@ -746,7 +847,7 @@ export function EnterMarks() {
                                        {test.date && <span className="text-xs text-teal-600 dark:text-teal-400">({test.date})</span>}
                                   </div>
                                   <div className="flex items-center gap-2">
-                                      {test.file && <FileText className="h-4 w-4 text-green-600" title="Paper Uploaded" />}
+                                      {test.fileUrl && <FileText className="h-4 w-4 text-green-600" title={`Uploaded: ${test.fileUrl}`} />}
                                       {(test.chapters.length > 0 || test.topics.length > 0) && <BookCopy className="h-4 w-4 text-blue-600" title="Syllabus Linked" />}
                                        {(!test.name || !test.date || test.totalMarks === '' || (typeof test.totalMarks === 'number' && test.totalMarks < 0)) && ( // Added type check
                                             <span className="text-xs text-destructive font-medium">(Incomplete)</span>
@@ -781,6 +882,7 @@ export function EnterMarks() {
                                           <Input id={`fileUpload-${test.id}`} type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleFileChange(test.id, e)} className="cursor-pointer file:cursor-pointer pl-8 file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-teal-600 file:text-white hover:file:bg-teal-700 bg-background border-teal-200 dark:border-teal-700 focus:ring-teal-500" />
                                       </div>
                                       {test.file && <p className="text-xs text-muted-foreground mt-1 truncate" title={test.file.name}><FileText className="inline h-3 w-3 mr-1"/> {test.file.name}</p>}
+                                       {test.fileUrl && <p className="text-xs text-green-600 mt-1 truncate" title={test.fileUrl}>Uploaded: {test.fileUrl.split('/').pop()}</p>}
                                   </div>
                              </div>
 
@@ -828,7 +930,7 @@ export function EnterMarks() {
               <CardFooter className="flex justify-end border-t border-teal-200 dark:border-teal-800 pt-4 mt-6 p-4 md:p-6 bg-teal-50/30 dark:bg-teal-900/20 rounded-b-xl">
                  <Button onClick={handleSaveAllDefinedTests} disabled={isSavingTests} size="lg" className="bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white shadow-lg hover:shadow-cyan-500/40 transition-all duration-300 transform hover:scale-105 animate-fade-in">
                    {isSavingTests ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                   Save All New Test Definitions ({definedTests.length})
+                   Save All New Test Definitions ({definedTests.length}) {isSimulating && '(Simulated)'}
                  </Button>
              </CardFooter>
          )}
@@ -841,6 +943,7 @@ export function EnterMarks() {
           <CardHeader className="p-4 md:p-6">
                <CardTitle className="text-xl md:text-2xl font-bold text-blue-700 dark:text-blue-300 flex items-center gap-2 animate-fade-in-down">
                    <Edit className="h-6 w-6 text-blue-500"/> Enter Student Marks
+                    {isSimulating && <Badge variant="destructive">SIMULATING</Badge>}
                </CardTitle>
                <CardDescription className="text-muted-foreground mt-1 animate-fade-in-down animation-delay-100">Select a previously saved test and enter the marks obtained by each student.</CardDescription>
           </CardHeader>
@@ -848,18 +951,19 @@ export function EnterMarks() {
               {/* Test Selection Dropdown */}
                <div className="max-w-md animate-fade-in animation-delay-200">
                  <Label htmlFor="markTestSelect" className="text-sm font-medium text-blue-800 dark:text-blue-200">Select Test to Enter Marks*</Label>
-                  <Select value={selectedTestForMarks} onValueChange={setSelectedTestForMarks} disabled={!selectedClassId || !selectedSubjectId || availableTestsForMarks.length === 0} required>
+                  <Select value={selectedTestForMarks} onValueChange={setSelectedTestForMarks} disabled={!selectedClassId || !selectedSubjectId || isLoadingTests || availableTestsForMarks.length === 0} required>
                        <SelectTrigger id="markTestSelect" className="mt-1 bg-background shadow-sm focus:ring-2 focus:ring-blue-500 border-blue-200 dark:border-blue-800 hover:border-blue-400 dark:hover:border-blue-600 transition-colors">
-                         <SelectValue placeholder="Select a saved test..." />
+                         <SelectValue placeholder={isLoadingTests ? "Loading tests..." : "Select a saved test..."} />
                        </SelectTrigger>
                        <SelectContent>
-                         {availableTestsForMarks.length > 0 ? (
+                         {!isLoadingTests && availableTestsForMarks.length > 0 ? (
                              availableTestsForMarks.map(test => (
                                  <SelectItem key={test.id} value={test.id}>{test.name} ({test.date}) - {test.totalMarks} Marks</SelectItem>
                              ))
                          ) : (
-                              <SelectItem value="no-saved-tests" disabled>No saved tests for this class/subject</SelectItem>
+                             !isLoadingTests && <SelectItem value="no-saved-tests" disabled>No saved tests for this class/subject</SelectItem>
                          )}
+                          {isLoadingTests && <SelectItem value="loading" disabled>Loading...</SelectItem>}
                        </SelectContent>
                      </Select>
                </div>
@@ -874,7 +978,7 @@ export function EnterMarks() {
                />
 
                {/* Marks Table */}
-               {selectedTestForMarks && studentsForMarkEntry.length > 0 && (
+               {selectedTestForMarks && (isLoadingStudents || studentsForMarkEntry.length > 0) && (
                    <div className="space-y-4 pt-6 border-t border-blue-200/50 dark:border-blue-800/50 animate-fade-in animation-delay-300">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                             <h3 className="font-semibold text-lg">
@@ -882,90 +986,102 @@ export function EnterMarks() {
                                 <span className="text-muted-foreground text-sm ml-2">(Max: {savedTests.find(t=>t.id===selectedTestForMarks)?.totalMarks})</span>
                             </h3>
                             {/* Enhanced CSV Upload Button */}
-                             <Button variant="outline" size="sm" onClick={triggerCSVUpload} disabled={isSavingMarks} className="bg-gradient-to-r from-green-50 to-lime-50 hover:from-green-100 hover:to-lime-100 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 shadow-sm hover:shadow-md transition-all group">
+                             <Button variant="outline" size="sm" onClick={triggerCSVUpload} disabled={isSavingMarks || isLoadingStudents} className="bg-gradient-to-r from-green-50 to-lime-50 hover:from-green-100 hover:to-lime-100 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 shadow-sm hover:shadow-md transition-all group">
                                 <FileSpreadsheet className="mr-2 h-4 w-4 group-hover:animate-pulse" /> Bulk Upload (CSV)
                             </Button>
                        </div>
-                       <div className="border border-blue-200 dark:border-blue-800 rounded-md overflow-hidden shadow-sm bg-background">
-                         <Table>
-                             <TableHeader className="bg-blue-50/50 dark:bg-blue-900/20">
-                                <TableRow>
-                                    <TableHead className="w-[80px] text-center font-semibold text-blue-800 dark:text-blue-300">Roll No.</TableHead>
-                                    <TableHead className="font-semibold text-blue-800 dark:text-blue-300">Student Name</TableHead>
-                                    <TableHead className="w-[150px] text-center font-semibold text-blue-800 dark:text-blue-300">Obtained Marks*</TableHead>
-                                    <TableHead className="w-[150px] text-center font-semibold text-blue-800 dark:text-blue-300">Analysis</TableHead> {/* New Analysis Column */}
-                                </TableRow>
-                             </TableHeader>
-                             <TableBody>
-                                 {studentsForMarkEntry.map((student, index) => {
-                                     const analysis = analysisResults.find(r => r.studentId === student.id);
-                                     const analyzing = isAnalyzing[student.id];
-                                     return (
-                                         <TableRow key={student.id} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors duration-150 group"> {/* Add group class */}
-                                             {/* Roll Number Style */}
-                                             <TableCell className="font-mono text-center text-lg font-bold text-blue-600 dark:text-blue-400 bg-blue-50/20 dark:bg-blue-900/20 border-r border-blue-200 dark:border-blue-800">
-                                                {student.rollNo}
-                                             </TableCell>
-                                             <TableCell className="font-medium">{student.name}</TableCell>
-                                             <TableCell className="text-center">
-                                                 <Input
-                                                     type="number"
-                                                     value={studentMarks[student.id] ?? ''}
-                                                     onChange={(e) => handleMarkChange(student.id, e.target.value)}
-                                                     min="0"
-                                                     max={savedTests.find(t=>t.id===selectedTestForMarks)?.totalMarks}
-                                                     className="text-center bg-background h-8 w-24 focus:ring-blue-500 dark:focus:ring-blue-400 border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 transition-colors mx-auto"
-                                                     placeholder="Score"
-                                                     aria-label={`Marks for ${student.name}`} // Accessibility
-                                                     disabled={isSavingMarks}
-                                                 />
-                                             </TableCell>
-                                             <TableCell className="text-center">
-                                                 {analysis && (
-                                                    <Button variant="ghost" size="sm" onClick={() => handlePrintAnalysis(student.id)} title="Print Analysis">
-                                                         <Printer className="h-4 w-4 text-gray-500 hover:text-gray-700"/>
-                                                    </Button>
-                                                 )}
-                                                  <Button
-                                                     variant="ghost"
-                                                     size="sm"
-                                                     onClick={() => handleAnalyzeStudent(student)}
-                                                     disabled={analyzing || studentMarks[student.id] === '' || isSavingMarks}
-                                                     title={analyzing ? "Analyzing..." : "Analyze Student"}
-                                                     className="ml-1"
-                                                  >
-                                                      {analyzing ? <Loader2 className="h-4 w-4 animate-spin text-purple-500"/> : <Sparkles className="h-4 w-4 text-purple-500 hover:text-purple-700"/>}
-                                                  </Button>
-                                                  {/* Show tooltip with analysis on hover maybe? */}
-                                                 {analysis && <span className="text-xs text-muted-foreground ml-2">(Analyzed)</span>}
-                                             </TableCell>
-                                         </TableRow>
-                                     );
-                                 })}
-                             </TableBody>
-                         </Table>
-                       </div>
+
+                       {isLoadingStudents ? (
+                            <div className="border border-blue-200 dark:border-blue-800 rounded-md overflow-hidden shadow-sm bg-background p-4">
+                                <div className="flex items-center justify-center h-48">
+                                    <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                                    <p className="ml-3 text-muted-foreground">Loading students...</p>
+                                </div>
+                            </div>
+                       ) : (
+                           <div className="border border-blue-200 dark:border-blue-800 rounded-md overflow-hidden shadow-sm bg-background">
+                             <Table>
+                                 <TableHeader className="bg-blue-50/50 dark:bg-blue-900/20">
+                                    <TableRow>
+                                        <TableHead className="w-[80px] text-center font-semibold text-blue-800 dark:text-blue-300">Roll No.</TableHead>
+                                        <TableHead className="font-semibold text-blue-800 dark:text-blue-300">Student Name</TableHead>
+                                        <TableHead className="w-[150px] text-center font-semibold text-blue-800 dark:text-blue-300">Obtained Marks*</TableHead>
+                                        <TableHead className="w-[150px] text-center font-semibold text-blue-800 dark:text-blue-300">Analysis & Actions</TableHead> {/* New Analysis Column */}
+                                    </TableRow>
+                                 </TableHeader>
+                                 <TableBody>
+                                     {studentsForMarkEntry.map((student, index) => {
+                                         const analysis = analysisResults.find(r => r.studentId === student.id);
+                                         const analyzing = isAnalyzing[student.id];
+                                         return (
+                                             <TableRow key={student.id} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors duration-150 group"> {/* Add group class */}
+                                                 {/* Roll Number Style */}
+                                                 <TableCell className="font-mono text-center text-lg font-bold text-blue-600 dark:text-blue-400 bg-blue-50/20 dark:bg-blue-900/20 border-r border-blue-200 dark:border-blue-800">
+                                                    {student.rollNo}
+                                                 </TableCell>
+                                                 <TableCell className="font-medium">{student.name}</TableCell>
+                                                 <TableCell className="text-center">
+                                                     <Input
+                                                         type="number"
+                                                         value={studentMarks[student.id] ?? ''}
+                                                         onChange={(e) => handleMarkChange(student.id, e.target.value)}
+                                                         min="0"
+                                                         max={savedTests.find(t=>t.id===selectedTestForMarks)?.totalMarks}
+                                                         className="text-center bg-background h-8 w-24 focus:ring-blue-500 dark:focus:ring-blue-400 border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 transition-colors mx-auto"
+                                                         placeholder="Score"
+                                                         aria-label={`Marks for ${student.name}`} // Accessibility
+                                                         disabled={isSavingMarks}
+                                                     />
+                                                 </TableCell>
+                                                 <TableCell className="text-center">
+                                                      <Button
+                                                         variant="ghost"
+                                                         size="sm"
+                                                         onClick={() => handleAnalyzeStudent(student)}
+                                                         disabled={analyzing || studentMarks[student.id] === '' || isSavingMarks}
+                                                         title={analyzing ? "Analyzing..." : "Analyze Student"}
+                                                         className="ml-1"
+                                                      >
+                                                          {analyzing ? <Loader2 className="h-4 w-4 animate-spin text-purple-500"/> : <Sparkles className="h-4 w-4 text-purple-500 hover:text-purple-700"/>}
+                                                      </Button>
+                                                     {analysis && (
+                                                        <Button variant="ghost" size="sm" onClick={() => handlePrintAnalysis(student.id)} title="Print Analysis">
+                                                             <Printer className="h-4 w-4 text-gray-500 hover:text-gray-700"/>
+                                                        </Button>
+                                                     )}
+                                                      {/* Show tooltip with analysis on hover maybe? */}
+                                                     {analysis && <span className="text-xs text-muted-foreground ml-2">(Analyzed)</span>}
+                                                 </TableCell>
+                                             </TableRow>
+                                         );
+                                     })}
+                                 </TableBody>
+                             </Table>
+                           </div>
+                       )}
                    </div>
                )}
-                {selectedTestForMarks && studentsForMarkEntry.length === 0 && (
+                {selectedTestForMarks && !isLoadingStudents && studentsForMarkEntry.length === 0 && (
                     <div className="text-center text-muted-foreground py-10 border-2 border-dashed border-blue-200 dark:border-blue-800 rounded-lg bg-blue-50/10 dark:bg-blue-900/10 animate-fade-in">
                         <p>No students found for the selected test's class/section.</p>
                     </div>
                 )}
-                 {!selectedTestForMarks && (selectedClassId && selectedSubjectId) && (
+                 {!selectedTestForMarks && (selectedClassId && selectedSubjectId) && !isLoadingTests && (
                     <div className="text-center text-muted-foreground py-10 border-2 border-dashed border-blue-200 dark:border-blue-800 rounded-lg bg-blue-50/10 dark:bg-blue-900/10 animate-fade-in">
+                        <BadgeHelp className="mx-auto h-8 w-8 mb-2 text-blue-400"/>
                         <p className="font-medium">Select a saved test above</p>
                          <p className="text-sm">Choose a test from the dropdown to start entering marks for students.</p>
+                         {availableTestsForMarks.length === 0 && <p className="text-xs mt-2">(No tests defined or saved for this subject yet)</p>}
                     </div>
                 )}
 
           </CardContent>
-           {selectedTestForMarks && studentsForMarkEntry.length > 0 && (
+           {selectedTestForMarks && !isLoadingStudents && studentsForMarkEntry.length > 0 && (
                <CardFooter className="flex flex-col sm:flex-row justify-end items-center border-t border-blue-200 dark:border-blue-800 pt-4 mt-6 p-4 md:p-6 bg-blue-50/30 dark:bg-blue-900/20 rounded-b-xl">
                     {/* Removed Print Analysis button from footer */}
                     <Button onClick={handleSaveMarks} disabled={isSavingMarks} size="lg" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white w-full sm:w-auto shadow-lg hover:shadow-purple-500/40 transition-all duration-300 transform hover:scale-105 animate-fade-in">
                         {isSavingMarks ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                         Save Marks for This Test
+                         Save Marks for This Test {isSimulating && '(Simulated)'}
                     </Button>
                </CardFooter>
            )}
@@ -990,6 +1106,42 @@ const animationStyles = `
 .animation-delay-200 { animation-delay: 200ms; }
 .animation-delay-300 { animation-delay: 300ms; }
 /* Add more delays as needed */
+
+/* Add styles for print */
+@media print {
+    .no-print { display: none !important; }
+    body {
+        padding: 10px !important; /* Reduce padding for print */
+        font-size: 10pt !important; /* Adjust font size for print */
+        color: #000 !important; /* Ensure text is black */
+    }
+    h1, h2 {
+        color: #000 !important;
+        border-bottom: 1px solid #ccc !important;
+        page-break-after: avoid !important;
+    }
+    .section {
+        border-left: 3px solid #ccc !important;
+        background-color: #f9f9f9 !important;
+        page-break-inside: avoid !important;
+    }
+    .label {
+         color: #333 !important;
+    }
+    .info-grid {
+         grid-template-columns: auto 1fr !important;
+         gap: 2px 5px !important;
+    }
+     a { /* Remove link styling for print */
+        text-decoration: none !important;
+        color: inherit !important;
+    }
+    /* Hide simulation badges in print */
+    .print-hide-simulation {
+       display: none !important;
+    }
+}
+
 `;
 
 // Inject styles (simple way, consider better approach for production)

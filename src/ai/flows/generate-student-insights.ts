@@ -31,7 +31,21 @@ const GenerateStudentInsightsOutputSchema = z.object({
 });
 export type GenerateStudentInsightsOutput = z.infer<typeof GenerateStudentInsightsOutputSchema>;
 
+// Mock data for simulation
+const mockInsightsOutput: GenerateStudentInsightsOutput = {
+  trends: "Simulated: The student shows consistent performance in this subject, with a slight upward trend in recent tests.",
+  weaknesses: "Simulated: Difficulty observed in applying concepts to complex word problems.",
+  personalizedTips: "Simulated: Recommend practicing multi-step word problems and reviewing foundational concepts X and Y.",
+  predictiveOutcomes: "Simulated: Based on current trends, the student is likely to maintain their performance level in the upcoming assessment. Focusing on weaknesses could lead to improvement."
+};
+
 export async function generateStudentInsights(input: GenerateStudentInsightsInput): Promise<GenerateStudentInsightsOutput> {
+  if (process.env.SIMULATE_AI === 'true') {
+    console.log(`--- SIMULATING generateStudentInsights for student ${input.studentId} ---`);
+    // Simulate a delay
+    await new Promise(resolve => setTimeout(resolve, 600));
+    return mockInsightsOutput;
+  }
   return generateStudentInsightsFlow(input);
 }
 
@@ -70,6 +84,11 @@ const generateStudentInsightsFlow = ai.defineFlow<
   inputSchema: GenerateStudentInsightsInputSchema,
   outputSchema: GenerateStudentInsightsOutputSchema,
 }, async input => {
+   if (process.env.SIMULATE_AI !== 'true' && !process.env.GOOGLE_GENAI_API_KEY) {
+     throw new Error('Missing GOOGLE_GENAI_API_KEY environment variable. Cannot call AI.');
+   }
+   console.log("Calling AI prompt for student insights...");
   const {output} = await prompt(input);
+   console.log("AI insights received:", output);
   return output!;
 });

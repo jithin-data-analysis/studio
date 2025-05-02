@@ -18,6 +18,7 @@ import { type AnalyzeTestPaperOutput } from '@/ai/flows/analyze-test-paper';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
+import { uploadFileAndProcessForRag } from '@/services/supabase'; // Import simulation-aware uploader
 
 export function UploadTestPaper() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -60,53 +61,65 @@ export function UploadTestPaper() {
     setIsAnalyzing(true);
     setError(null);
     setAnalysisResult(null);
+    const currentFileName = selectedFile.name; // Store filename for messages
 
     try {
-        // Convert file to data URI
+        // 1. Upload file (or simulate) - RAG processing happens here if not simulating
+        // We pass a generic path prefix, adjust if needed per subject/class
+        const { fileUrl } = await uploadFileAndProcessForRag(selectedFile, 'test-papers/');
+        console.log(`File ${process.env.SIMULATE_AI === 'true' ? 'simulation' : ''} uploaded/processed: ${fileUrl}`);
+
+        // 2. Convert file to data URI for AI analysis flow
         const reader = new FileReader();
         reader.readAsDataURL(selectedFile);
+
         reader.onloadend = async () => {
             const base64data = reader.result as string;
-
             if (!base64data) {
-                 throw new Error("Could not read file data.");
+                 throw new Error("Could not read file data for analysis.");
             }
 
             try {
+                // 3. Call the analyzeTestPaper flow (handles its own simulation)
                 const result = await analyzeTestPaper({ testPaperDataUri: base64data });
                 setAnalysisResult(result);
-                 toast({ title: "Analysis Complete", description: "Test paper analysis finished successfully." });
+                toast({
+                    title: `Analysis Complete ${process.env.SIMULATE_AI === 'true' ? '(Simulated)' : ''}`,
+                    description: `Analysis for ${currentFileName} finished.`
+                });
             } catch (aiError: any) { // Catch specific AI error
                  console.error('AI Analysis failed:', aiError);
-                 // Provide more specific error if possible
-                 let errorMsg = 'Failed to analyze the test paper.';
+                 let errorMsg = `Failed to analyze ${currentFileName}.`;
                  if (aiError.message?.includes('quota')) {
                      errorMsg += ' API quota might be exceeded.';
                  } else if (aiError.message?.includes('format')) {
-                     errorMsg += ' The document format might be incompatible or corrupted.';
+                     errorMsg += ' Document format might be incompatible or corrupted.';
+                 } else if (process.env.SIMULATE_AI !== 'true' && aiError.message?.includes('GOOGLE_GENAI_API_KEY')) {
+                     errorMsg = 'Missing Google API Key. Set SIMULATE_AI=true in .env to test without keys.'
                  } else {
-                     errorMsg += ' The AI model might be temporarily unavailable.';
+                    errorMsg += ` ${aiError.message || 'The AI model might be unavailable.'}`;
                  }
                  setError(errorMsg);
                  toast({ title: "Analysis Failed", description: errorMsg, variant: "destructive" });
             } finally {
-                 // Ensure loading state is turned off even if reader fails later
-                 // setIsAnalyzing(false); // This is moved down
+                setIsAnalyzing(false); // Stop loading after analysis attempt
             }
         };
+
          reader.onerror = (errorEvent) => {
              console.error("Error reading file:", errorEvent);
-             throw new Error("Error reading file.");
+             // Stop loading and show error if reader fails
+             setIsAnalyzing(false);
+             setError("Error reading file before analysis.");
+             toast({ title: "File Read Error", description: "Could not read the file data.", variant: "destructive" });
          };
-         // Move final setIsAnalyzing(false) here to cover reader errors too
-         reader.onloadend = reader.onloadend?.finally(() => setIsAnalyzing(false));
-
 
     } catch (err: any) {
-      console.error('File processing error:', err);
-      setError(err.message || 'An error occurred during file processing.');
-       toast({ title: "File Error", description: err.message || "Could not process the file.", variant: "destructive" });
-      setIsAnalyzing(false); // Ensure loading stops on immediate errors
+      // Catches errors from uploadFileAndProcessForRag or initial file reading issues
+      console.error('File processing/upload error:', err);
+      setError(err.message || 'An error occurred during file processing or upload.');
+       toast({ title: "Processing Error", description: err.message || "Could not process the file.", variant: "destructive" });
+      setIsAnalyzing(false); // Ensure loading stops
     }
   };
 
@@ -146,6 +159,7 @@ export function UploadTestPaper() {
         <CardTitle>Upload and Analyze Test Paper</CardTitle>
         <CardDescription>
           Upload a test paper (PDF/DOCX) for AI analysis: summary, Bloom's level, marks, and question extraction.
+          {process.env.SIMULATE_AI === 'true' && <Badge variant="destructive" className="ml-2">SIMULATING AI</Badge>}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -186,7 +200,7 @@ export function UploadTestPaper() {
              <Card className="bg-muted/50 animate-pulse">
                  <CardHeader>
                      <CardTitle className="text-lg flex items-center gap-2">
-                         <Loader2 className="animate-spin h-5 w-5"/> Analyzing Paper...
+                         <Loader2 className="animate-spin h-5 w-5"/> Analyzing Paper... {process.env.SIMULATE_AI === 'true' && '(Simulating)'}
                      </CardTitle>
                  </CardHeader>
                  <CardContent className="space-y-5 pt-2">
@@ -212,8 +226,9 @@ export function UploadTestPaper() {
           <Card className="bg-muted/50 border border-green-200 dark:border-green-800/50 shadow-sm">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2 text-green-700 dark:text-green-400">
-                  <CheckCircle /> Analysis Results for <FileText className="inline h-5 w-5 mx-1"/> <span className="font-mono text-sm truncate max-w-xs">{selectedFile?.name}</span>
+                  <CheckCircle /> Analysis Results {process.env.SIMULATE_AI === 'true' && <Badge variant='secondary'>Simulated</Badge>}
               </CardTitle>
+               <CardDescription>File: {selectedFile?.name}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5 pt-2"> {/* Increased spacing */}
                <div>
@@ -242,6 +257,17 @@ export function UploadTestPaper() {
                          <p className="text-sm text-muted-foreground/70 pl-6 italic">No MCQ-style questions were automatically extracted.</p>
                      )}
                  </div>
+                 {/* Display Topic Mapping if available */}
+                 {analysisResult.topicMapping && analysisResult.topicMapping.length > 0 && (
+                      <div>
+                          <h4 className="font-semibold mb-1 flex items-center gap-1.5 text-sm uppercase text-muted-foreground"><ListChecks size={16}/> Question-Topic Mapping ({analysisResult.topicMapping.length}):</h4>
+                          <ul className="list-disc list-inside pl-6 text-sm space-y-1.5 mt-1">
+                              {analysisResult.topicMapping.map((mapping, index) => (
+                                  <li key={index}><b>Q:</b> "{mapping.question}" → <b>Topic:</b> {mapping.topic}</li>
+                              ))}
+                          </ul>
+                      </div>
+                  )}
             </CardContent>
           </Card>
         )}
@@ -251,7 +277,7 @@ export function UploadTestPaper() {
         <Button onClick={handleAnalyze} disabled={!selectedFile || isAnalyzing} size="lg"> {/* Larger button */}
           {isAnalyzing ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analyzing...
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analyzing... {process.env.SIMULATE_AI === 'true' && '(Simulating)'}
             </>
           ) : (
              <>

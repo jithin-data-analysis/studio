@@ -20,10 +20,10 @@ import {
 
 async function validateApiKey(): Promise<string> {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY;
-  if (!apiKey) {
+  if (!apiKey && process.env.SIMULATE_AI !== 'true') { // Only throw error if not simulating
     throw new Error('Missing GOOGLE_GENAI_API_KEY environment variable.');
   }
-  return apiKey;
+  return apiKey || 'simulated-key'; // Return dummy key if simulating
 }
 
 const AnalyzeTestPaperInputSchema = z.object({
@@ -50,8 +50,30 @@ const AnalyzeTestPaperOutputSchema = z.object({
 });
 export type AnalyzeTestPaperOutput = z.infer<typeof AnalyzeTestPaperOutputSchema>;
 
+// Mock data for simulation
+const mockAnalysisOutput: AnalyzeTestPaperOutput = {
+  summary: "Simulated: This test paper covers basic arithmetic operations (addition, subtraction) and identification of common geometric shapes.",
+  bloomsLevel: "Simulated: Knowledge/Comprehension",
+  totalMarks: 25,
+  mcqQuestions: [
+    "Simulated: What is 5 + 3?",
+    "Simulated: Which shape is a circle?",
+    "Simulated: Subtract 2 from 7."
+  ],
+  topicMapping: [
+    { question: "Simulated: What is 5 + 3?", topic: "Simulated: Addition" },
+    { question: "Simulated: Which shape is a circle?", topic: "Simulated: Basic Shapes" }
+  ]
+};
+
 export async function analyzeTestPaper(input: AnalyzeTestPaperInput): Promise<AnalyzeTestPaperOutput> {
-  return analyzeTestPaperFlow(input);
+   if (process.env.SIMULATE_AI === 'true') {
+     console.log('--- SIMULATING analyzeTestPaper ---');
+     // Simulate a delay
+     await new Promise(resolve => setTimeout(resolve, 500));
+     return mockAnalysisOutput;
+   }
+   return analyzeTestPaperFlow(input);
 }
 
 const prompt = ai.definePrompt({
@@ -115,15 +137,15 @@ const analyzeTestPaperFlow = ai.defineFlow<
 
     try {
         console.log("Starting RAG process with Langchain...");
-        const apiKey = await validateApiKey();
-        const blob = dataUriToBlob(input.testPaperDataUri); // Convert Data URI to Blob
+        const apiKey = await validateApiKey(); // Use validated key
+        const blob = await dataUriToBlob(input.testPaperDataUri); // Convert Data URI to Blob
 
         // Process the document to get text chunks for the RAG query
         const chunks = await processDocumentFromBlob(blob); // Process the Blob using Langchain loader/splitter
         queryText = chunks.map(chunk => chunk.pageContent).join("\n").substring(0, 1000); // Use first 1000 chars as query
 
         if (queryText) {
-            const embeddings = await getEmbeddings(apiKey);
+            const embeddings = await getEmbeddings(); // Use validated key inside
             // Initialize or load the vector store using Langchain's Chroma wrapper
             const vectorStore = await ensureVectorStore(embeddings);
 

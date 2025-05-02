@@ -40,9 +40,22 @@ export type CorrelateCoCurricularActivitiesOutput = z.infer<
   typeof CorrelateCoCurricularActivitiesOutputSchema
 >;
 
+// Mock data for simulation
+const mockCorrelationOutput: CorrelateCoCurricularActivitiesOutput = {
+  balanceCheck: "Simulated: Students participating in the Debate Team show slightly higher scores in subjects requiring critical analysis. Music Ensemble members perform well in creative writing tasks.",
+  riskFlags: "Simulated: A small group of students involved in 3+ activities show a decline in Math scores compared to the class average. Monitor their workload.",
+  suggestions: "Simulated: Consider scheduling study support sessions for students juggling multiple activities. Explore integrating teamwork elements into Science projects to leverage skills from sports clubs."
+};
+
 export async function correlateCoCurricularActivities(
   input: CorrelateCoCurricularActivitiesInput
 ): Promise<CorrelateCoCurricularActivitiesOutput> {
+  if (process.env.SIMULATE_AI === 'true') {
+    console.log(`--- SIMULATING correlateCoCurricularActivities for class ${input.classId} ---`);
+    // Simulate a delay
+    await new Promise(resolve => setTimeout(resolve, 700));
+    return mockCorrelationOutput;
+  }
   return correlateCoCurricularActivitiesFlow(input);
 }
 
@@ -97,7 +110,14 @@ const correlateCoCurricularActivitiesFlow = ai.defineFlow<
     outputSchema: CorrelateCoCurricularActivitiesOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
+     if (process.env.SIMULATE_AI !== 'true' && !process.env.GOOGLE_GENAI_API_KEY) {
+        throw new Error('Missing GOOGLE_GENAI_API_KEY environment variable. Cannot call AI.');
+     }
+     console.log("Calling AI prompt for co-curricular correlation...");
+     // In a real app, fetch actual student, marks, and activity data here based on input.classId and input.term
+     // Pass this aggregated data to the prompt (might need to adjust prompt schema)
+    const {output} = await prompt(input); // Pass fetched data here if needed
+     console.log("AI correlation insights received:", output);
     return output!;
   }
 );
