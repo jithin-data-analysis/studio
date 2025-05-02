@@ -5,7 +5,7 @@ import { UploadTestPaper } from './components/upload-test-paper';
 import { EnterMarks } from './components/enter-marks';
 import { PerformanceInsights } from './components/performance-insights';
 import { ClassReports } from './components/class-reports';
-import { Upload, Edit, BarChart3, TrendingUp, ListPlus, FolderKanban, Users, MessageSquare, User, FileText } from 'lucide-react'; // Added new icons
+import { Upload, Edit, BarChart3, TrendingUp, ListPlus, FolderKanban, Users, MessageSquare, User, FileText, Bell, Brain, Activity } from 'lucide-react'; // Added Bell, Brain, Activity
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -23,34 +23,47 @@ export default function TeacherDashboard() {
            </Button>
          </Link>
        </div>
-       {/* Dashboard Overview Placeholder */}
-        <Card className="mb-8 bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50 dark:from-blue-900/30 dark:via-purple-900/30 dark:to-pink-900/30 border-l-4 border-primary">
-             <CardHeader>
-                 <CardTitle className="text-xl font-semibold">Quick Analytics</CardTitle>
-                 <CardDescription>Your at-a-glance performance overview.</CardDescription>
+       {/* Dashboard Overview Placeholder - Enhanced with more color */}
+        <Card className="mb-8 border-l-4 border-primary shadow-lg overflow-hidden">
+             <CardHeader className="bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 dark:from-indigo-900/30 dark:via-purple-900/30 dark:to-pink-900/30 p-4 md:p-6">
+                 <CardTitle className="text-xl font-semibold text-primary">Quick Analytics & Actions</CardTitle>
+                 <CardDescription>Your at-a-glance performance overview and quick links.</CardDescription>
              </CardHeader>
-             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                 <div className="p-3 rounded-lg bg-background/50 shadow-sm">
-                     <p className="text-2xl font-bold text-primary">15</p>
+             {/* Use grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 for more tiles */}
+             <CardContent className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 p-4 md:p-6">
+                 {/* Existing Tiles with more vibrant backgrounds */}
+                 <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-900/30 shadow-sm border border-orange-200 dark:border-orange-800 text-center">
+                     <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">15</p>
                      <p className="text-xs text-muted-foreground">Students Needing Coaching</p>
                  </div>
-                 <div className="p-3 rounded-lg bg-background/50 shadow-sm">
-                      <p className="text-2xl font-bold text-primary">3</p>
+                 <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/30 shadow-sm border border-blue-200 dark:border-blue-800 text-center">
+                      <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">3</p>
                       <p className="text-xs text-muted-foreground">Upcoming Tests/Projects</p>
                  </div>
-                 <div className="p-3 rounded-lg bg-background/50 shadow-sm">
-                      <p className="text-2xl font-bold text-primary">85%</p>
+                 <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/30 shadow-sm border border-green-200 dark:border-green-800 text-center">
+                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">85%</p>
                       <p className="text-xs text-muted-foreground">Avg. Attendance (Last Week)</p>
                  </div>
-                 <div className="p-3 rounded-lg bg-background/50 shadow-sm">
-                      <p className="text-2xl font-bold text-primary">5</p>
+                 <div className="p-3 rounded-lg bg-teal-50 dark:bg-teal-900/30 shadow-sm border border-teal-200 dark:border-teal-800 text-center">
+                      <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">5</p>
                       <p className="text-xs text-muted-foreground">Recent Activity Logs</p>
                  </div>
+                 {/* New Tiles */}
+                  <div className="p-3 rounded-lg bg-purple-50 dark:bg-purple-900/30 shadow-sm border border-purple-200 dark:border-purple-800 text-center">
+                     <Brain className="h-6 w-6 mx-auto text-purple-600 dark:text-purple-400 mb-1"/>
+                     <p className="text-xs text-muted-foreground">Latest AI Insights</p>
+                 </div>
+                  <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/30 shadow-sm border border-yellow-200 dark:border-yellow-800 text-center">
+                     <Bell className="h-6 w-6 mx-auto text-yellow-600 dark:text-yellow-400 mb-1"/>
+                     <p className="text-xs text-muted-foreground">New Notifications</p>
+                 </div>
+
              </CardContent>
          </Card>
 
       <Tabs defaultValue="tests" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 mb-8"> {/* Adjusted grid for more tabs */}
+        {/* Adjusted grid for potentially more tabs in future, keeping 7 for now */}
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 mb-8">
            {/* Renamed 'Manage Tests' to 'Tests & Marks' for clarity */}
           <TabsTrigger value="tests" className="text-xs sm:text-sm">
             <ListPlus className="mr-1 sm:mr-2 h-4 w-4" /> Tests & Marks
