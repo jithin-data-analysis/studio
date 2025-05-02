@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { ArrowLeft, LayoutDashboard, BookOpen, BarChart2, CalendarCheck, Brain, User } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, BookOpen, BarChart2, CalendarCheck, Brain, User, FileText } from 'lucide-react'; // Added FileText here
 
 export default function StudentDashboard() {
   return (
