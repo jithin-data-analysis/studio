@@ -20,8 +20,8 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { type CoCurricularActivity, type Student } from '@/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; // Import Avatar
+import { User as UserIcon } from 'lucide-react'; // Rename User import
 
 interface StudentModalProps {
   isOpen: boolean;
@@ -122,9 +122,9 @@ export function StudentModal({
         </DialogHeader>
         <div className="grid gap-4 py-4">
             <div className="flex items-center gap-4">
-                 <Avatar className="h-16 w-16">
+                 <Avatar className="h-16 w-16 border"> {/* Added border */}
                    <AvatarImage src={photoUrl} alt={name} />
-                   <AvatarFallback><User /></AvatarFallback>
+                   <AvatarFallback><UserIcon /></AvatarFallback> {/* Use renamed UserIcon */}
                  </Avatar>
                  <div className="grid gap-1.5">
                       <Label htmlFor="photo">Photo (Optional)</Label>

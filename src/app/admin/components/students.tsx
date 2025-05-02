@@ -26,8 +26,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User, Edit, Trash2, Search, Filter, Users } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; // Import Avatar
+import { User as UserIcon, Edit, Trash2, Search, Filter, Users } from 'lucide-react'; // Rename User import
 import { type Student, type Class, type Section } from '@/types';
 import { StudentModal } from './student-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -41,11 +41,11 @@ const mockClasses: Class[] = [
     grade: 1,
     sections: [
       { id: 'sec1a', name: 'A', classId: 'cls1', students: [
-          { id: 'stu1', name: 'Alice Wonder', rollNo: '101', dob: '2016-01-15', gender: 'Female', photoUrl: 'https://picsum.photos/seed/101/100', classId: 'cls1', sectionId: 'sec1a', coCurricularIds: ['act1'] },
-          { id: 'stu2', name: 'Bob The Builder', rollNo: '102', dob: '2016-03-20', gender: 'Male', classId: 'cls1', sectionId: 'sec1a', coCurricularIds: [] },
+          { id: 'stu1', name: 'Alice Wonder', rollNo: '101', dob: '2016-01-15', gender: 'Female', photoUrl: 'https://picsum.photos/seed/101/100', classId: 'cls1', sectionId: 'sec1a', coCurricularIds: ['act1'] } as Student,
+          { id: 'stu2', name: 'Bob The Builder', rollNo: '102', dob: '2016-03-20', gender: 'Male', classId: 'cls1', sectionId: 'sec1a', coCurricularIds: [] } as Student,
        ]},
       { id: 'sec1b', name: 'B', classId: 'cls1', students: [
-           { id: 'stu3', name: 'Charlie Chaplin', rollNo: '103', dob: '2016-02-10', gender: 'Male', photoUrl: 'https://picsum.photos/seed/103/100', classId: 'cls1', sectionId: 'sec1b', coCurricularIds: ['act2'] },
+           { id: 'stu3', name: 'Charlie Chaplin', rollNo: '103', dob: '2016-02-10', gender: 'Male', photoUrl: 'https://picsum.photos/seed/103/100', classId: 'cls1', sectionId: 'sec1b', coCurricularIds: ['act2'] } as Student,
       ] },
     ],
   },
@@ -55,7 +55,7 @@ const mockClasses: Class[] = [
     grade: 8,
     sections: [
       { id: 'sec8a', name: 'A', classId: 'cls2', students: [
-           { id: 'stu4', name: 'Diana Prince', rollNo: '801', dob: '2009-05-05', gender: 'Female', classId: 'cls2', sectionId: 'sec8a', coCurricularIds: ['act1', 'act3'] },
+           { id: 'stu4', name: 'Diana Prince', rollNo: '801', dob: '2009-05-05', gender: 'Female', classId: 'cls2', sectionId: 'sec8a', coCurricularIds: ['act1', 'act3'] } as Student,
       ] },
     ],
   },
@@ -85,7 +85,7 @@ export function Students() {
   const [filterSectionId, setFilterSectionId] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
-  const { toast } = useToast(); // Initialize toast
+  const { toast } = useToast();
 
   // Derive available sections based on selected class for filtering
   const availableSections = useMemo(() => {
@@ -144,8 +144,8 @@ export function Students() {
    }
 
   return (
-    <Card className="shadow-md dark:shadow-indigo-900/10 border-t-4 border-primary rounded-xl overflow-hidden"> {/* Added styles */}
-       <CardHeader className="bg-gradient-to-r from-indigo-50 via-white to-teal-50 dark:from-indigo-900/20 dark:via-background dark:to-teal-900/20 p-4 md:p-6"> {/* Gradient header */}
+    <Card className="shadow-md dark:shadow-primary/10 border-t-4 border-primary rounded-xl overflow-hidden"> {/* Adjusted shadow */}
+       <CardHeader className="bg-gradient-to-r from-primary/10 via-white to-accent/10 dark:from-primary/20 dark:via-background dark:to-accent/20 p-4 md:p-6"> {/* Adjusted gradient */}
          <CardTitle className="text-xl md:text-2xl font-bold text-primary flex items-center gap-2">
             <Users className="h-6 w-6"/> Manage Students
          </CardTitle>
@@ -153,9 +153,9 @@ export function Students() {
           View, filter, edit, or remove student records. Adding new students is done via the 'Classes & Sections' tab for better organization.
         </CardDescription>
       </CardHeader>
-      <CardContent className="p-4 md:p-6"> {/* Adjusted padding */}
+      <CardContent className="p-4 md:p-6">
          {/* Enhanced Filter Section */}
-        <div className="flex flex-wrap items-center gap-4 mb-6 p-4 border border-dashed border-indigo-200 dark:border-indigo-800 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10">
+        <div className="flex flex-wrap items-center gap-4 mb-6 p-4 border border-dashed border-primary/30 dark:border-primary/50 rounded-lg bg-primary/5 dark:bg-primary/10">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -166,10 +166,9 @@ export function Students() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="flex gap-2 flex-wrap md:flex-nowrap"> {/* Allow wrapping on smaller screens */}
-             {/* <Filter className="h-5 w-5 text-muted-foreground mt-2 mr-1 hidden md:block" /> */}
+          <div className="flex gap-2 flex-wrap md:flex-nowrap">
              <Select value={filterClassId} onValueChange={setFilterClassId}>
-               <SelectTrigger className="w-full md:w-[180px] bg-background shadow-sm"> {/* Adjusted width */}
+               <SelectTrigger className="w-full md:w-[180px] bg-background shadow-sm">
                  <SelectValue placeholder="Filter by Class" />
                </SelectTrigger>
                <SelectContent>
@@ -180,7 +179,7 @@ export function Students() {
                </SelectContent>
              </Select>
               <Select value={filterSectionId} onValueChange={setFilterSectionId} disabled={filterClassId === 'all' || availableSections.length === 0}>
-               <SelectTrigger className="w-full md:w-[180px] bg-background shadow-sm"> {/* Adjusted width */}
+               <SelectTrigger className="w-full md:w-[180px] bg-background shadow-sm">
                  <SelectValue placeholder="Filter by Section" />
                </SelectTrigger>
                <SelectContent>
@@ -193,7 +192,7 @@ export function Students() {
           </div>
         </div>
 
-        <div className="border rounded-md overflow-hidden shadow-sm"> {/* Added shadow */}
+        <div className="border rounded-md overflow-hidden shadow-sm">
           <Table>
             <TableHeader className="bg-muted/50">
               <TableRow>
@@ -218,12 +217,11 @@ export function Students() {
                   </TableRow>
               )}
               {filteredStudents.sort((a,b) => a.rollNo.localeCompare(b.rollNo)).map((student) => (
-                // Ensure no extra whitespace around TableRow
-                <TableRow key={student.id} className="hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors duration-150">
+                <TableRow key={student.id} className="hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors duration-150">
                   <TableCell>
                     <Avatar className="h-9 w-9 border">
                       <AvatarImage src={student.photoUrl} alt={student.name} />
-                      <AvatarFallback><User size={16} /></AvatarFallback>
+                      <AvatarFallback><UserIcon size={16} /></AvatarFallback> {/* Use renamed UserIcon */}
                     </Avatar>
                   </TableCell>
                   <TableCell className="font-medium">{student.name}</TableCell>
@@ -233,11 +231,10 @@ export function Students() {
                   <TableCell>{student.dob}</TableCell>
                   <TableCell>{student.gender}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-primary/10" onClick={() => handleEdit(student)} title="Edit Student"> {/* Added hover color */}
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-primary/10" onClick={() => handleEdit(student)} title="Edit Student">
                       <Edit className="h-4 w-4" />
                        <span className="sr-only">Edit Student</span>
                     </Button>
-                     {/* Confirmation Dialog for Student Removal */}
                      <AlertDialog>
                          <AlertDialogTrigger asChild>
                              <Button
@@ -279,9 +276,9 @@ export function Students() {
             }}
             onSave={handleSaveStudent}
             studentData={editingStudent}
-            classId={editingStudent.classId} // Pass necessary context
+            classId={editingStudent.classId}
             sectionId={editingStudent.sectionId}
-            availableActivities={mockActivities} // Pass available activities
+            availableActivities={mockActivities}
          />
      )}
     </Card>

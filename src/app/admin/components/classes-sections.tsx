@@ -1,7 +1,7 @@
 // src/app/admin/components/classes-sections.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react'; // Added useEffect import
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -18,12 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { PlusCircle, Trash2, UserPlus, Edit, GripVertical, BookOpen } from 'lucide-react'; // Added GripVertical, BookOpen
-import { type Class, type Section, type Student } from '@/types'; // Assuming types are defined
-import { StudentModal } from './student-modal'; // We'll create this next
-import { useToast } from '@/hooks/use-toast'; // Added toast
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'; // Added AlertDialog
-import { Badge } from '@/components/ui/badge'; // Import Badge
+import { PlusCircle, Trash2, UserPlus, Edit, BookOpen, User as UserIcon, XSquare, CheckSquare } from 'lucide-react'; // Added User, XSquare, CheckSquare
+import { type Class, type Section, type Student } from '@/types';
+import { StudentModal } from './student-modal';
+import { useToast } from '@/hooks/use-toast';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; // Import Avatar
 
 const initialClasses: Class[] = [
   // Sample data - replace with API call later
@@ -36,7 +37,10 @@ const initialClasses: Class[] = [
         id: 'sec1a',
         name: 'A',
         classId: 'cls1',
-        students: [{ id: 'stu1', name: 'Alice', rollNo: '101', dob: '2016-01-15', gender: 'Female', classId: 'cls1', sectionId: 'sec1a', coCurricularIds: ['act1'] } as Student, /* more students */ ],
+        students: [
+            { id: 'stu1', name: 'Alice', rollNo: '101', dob: '2016-01-15', gender: 'Female', photoUrl: 'https://picsum.photos/seed/101/100', classId: 'cls1', sectionId: 'sec1a', coCurricularIds: ['act1'] } as Student,
+            { id: 'stu2', name: 'Bob', rollNo: '102', dob: '2016-03-20', gender: 'Male', classId: 'cls1', sectionId: 'sec1a', coCurricularIds: []} as Student,
+         ],
       },
       { id: 'sec1b', name: 'B', classId: 'cls1', students: [] },
     ],
@@ -47,7 +51,7 @@ const initialClasses: Class[] = [
     grade: 8,
     sections: [
       { id: 'sec8a', name: 'A', classId: 'cls2', students: [
-          { id: 'stu4', name: 'Diana Prince', rollNo: '801', dob: '2009-05-05', gender: 'Female', classId: 'cls2', sectionId: 'sec8a', coCurricularIds: ['act1', 'act3'] } as Student,
+          { id: 'stu4', name: 'Diana Prince', rollNo: '801', dob: '2009-05-05', gender: 'Female', photoUrl: 'https://picsum.photos/seed/801/100', classId: 'cls2', sectionId: 'sec8a', coCurricularIds: ['act1', 'act3'] } as Student,
       ] },
     ],
   },
@@ -65,9 +69,9 @@ export function ClassesSections() {
   const [classes, setClasses] = useState<Class[]>(initialClasses);
   const [selectedGrade, setSelectedGrade] = useState<string>('');
   const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
-  const [editingStudent, setEditingStudent] = useState<Student | null>(null); // Use correct student type
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [targetSection, setTargetSection] = useState<{ classId: string; sectionId: string } | null>(null);
-  const { toast } = useToast(); // Init toast
+  const { toast } = useToast();
 
 
   const handleAddClass = () => {
@@ -160,7 +164,7 @@ export function ClassesSections() {
       setIsStudentModalOpen(true);
   }
 
-  const handleSaveStudent = (studentData: Partial<Student>) => { // Use correct student type
+  const handleSaveStudent = (studentData: Partial<Student>) => {
       // Add validation here if needed (e.g., unique roll number within class/section)
       // Add API call here later
       setClasses(prevClasses => {
@@ -219,9 +223,12 @@ export function ClassesSections() {
 
   const gradeOptions = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
 
+  // Define a max number of slots per section (e.g., 30)
+  const MAX_STUDENTS_PER_SECTION = 30;
+
   return (
-    <Card className="shadow-md dark:shadow-indigo-900/10 border-t-4 border-primary rounded-xl overflow-hidden"> {/* Added shadow, border, rounded */}
-      <CardHeader className="bg-gradient-to-r from-indigo-50 via-white to-teal-50 dark:from-indigo-900/20 dark:via-background dark:to-teal-900/20 p-4 md:p-6"> {/* Gradient header */}
+    <Card className="shadow-md dark:shadow-primary/10 border-t-4 border-primary rounded-xl overflow-hidden"> {/* Adjusted shadow */}
+      <CardHeader className="bg-gradient-to-r from-primary/10 via-white to-accent/10 dark:from-primary/20 dark:via-background dark:to-accent/20 p-4 md:p-6"> {/* Adjusted gradient */}
         <CardTitle className="text-xl md:text-2xl font-bold text-primary flex items-center gap-2">
              <BookOpen className="h-6 w-6"/> Manage Classes & Sections
         </CardTitle>
@@ -229,9 +236,9 @@ export function ClassesSections() {
           Define your school's structure. Add grades, organize sections, and manage student placements visually.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6 p-4 md:p-6"> {/* Adjusted padding */}
+      <CardContent className="space-y-6 p-4 md:p-6">
          {/* Enhanced Add Class section */}
-        <div className="flex flex-wrap items-center gap-3 p-4 border border-dashed border-indigo-200 dark:border-indigo-800 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10">
+        <div className="flex flex-wrap items-center gap-3 p-4 border border-dashed border-primary/30 dark:border-primary/50 rounded-lg bg-primary/5 dark:bg-primary/10">
           <Select value={selectedGrade} onValueChange={setSelectedGrade}>
             <SelectTrigger className="w-full sm:w-[180px] bg-background shadow-sm">
               <SelectValue placeholder="Select Grade Level" />
@@ -265,10 +272,9 @@ export function ClassesSections() {
              </div>
           )}
           {classes.map((cls) => (
-            <Card key={cls.id} className="overflow-hidden border border-border rounded-lg shadow-sm hover:shadow-lg transition-shadow duration-300 bg-gradient-to-br from-white via-white to-indigo-50 dark:from-background dark:via-background dark:to-indigo-900/10"> {/* Added gradient */}
+            <Card key={cls.id} className="overflow-hidden border border-border rounded-lg shadow-sm hover:shadow-lg transition-shadow duration-300 bg-gradient-to-br from-white via-white to-primary/5 dark:from-background dark:via-background dark:to-primary/10"> {/* Adjusted gradient */}
               <CardHeader className="flex flex-row items-center justify-between bg-muted/30 dark:bg-muted/10 p-3 px-4 border-b">
                  <div className="flex items-center gap-2">
-                   {/* <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" /> */} {/* Removed drag handle for now */}
                    <CardTitle className="text-lg font-semibold text-primary">{cls.name}</CardTitle>
                     <Badge variant="secondary" className="font-mono text-xs">{cls.sections.length} Section(s)</Badge>
                  </div>
@@ -281,15 +287,14 @@ export function ClassesSections() {
                      >
                        <PlusCircle className="mr-1 h-3 w-3" /> Add Section
                      </Button>
-                      {/* Confirmation Dialog for Class Removal */}
                      <AlertDialog>
                          <AlertDialogTrigger asChild>
                             <Button
-                               variant="ghost" // Changed to ghost
+                               variant="ghost"
                                size="icon-sm"
                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
                                aria-label={`Remove ${cls.name}`}
-                               disabled={cls.sections.some(s => s.students.length > 0)} // Disable if class has students
+                               disabled={cls.sections.some(s => s.students.length > 0)}
                              >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -312,15 +317,13 @@ export function ClassesSections() {
               <CardContent className="p-4 space-y-3">
                 {cls.sections.length === 0 && <p className="text-sm text-muted-foreground pl-4">No sections yet. Click 'Add Section' above.</p>}
                 {cls.sections.map((sec) => (
-                  <div key={sec.id} className="border rounded-md p-3 bg-background shadow-sm dark:bg-muted/20 transition-all duration-200 hover:border-indigo-300 dark:hover:border-indigo-700">
-                    <div className="flex justify-between items-center mb-3 pb-2 border-b"> {/* Added border bottom */}
-                        <h4 className="font-semibold text-indigo-700 dark:text-indigo-400">Section {sec.name}</h4>
+                  <div key={sec.id} className="border rounded-md p-3 bg-background shadow-sm dark:bg-muted/20 transition-all duration-200 hover:border-primary/50 dark:hover:border-primary/70"> {/* Adjusted hover border */}
+                    <div className="flex justify-between items-center mb-3 pb-2 border-b">
+                        <h4 className="font-semibold text-primary dark:text-primary/90">Section {sec.name}</h4> {/* Adjusted color */}
                         <div className="flex items-center gap-2">
-                             <Button variant="outline" size="sm" onClick={() => openAddStudentModal(cls.id, sec.id)} className="hover:bg-accent/80 text-xs"> {/* Smaller text */}
+                             <Button variant="outline" size="sm" onClick={() => openAddStudentModal(cls.id, sec.id)} className="hover:bg-accent/80 text-xs">
                                 <UserPlus className="h-4 w-4 mr-1" /> Add Student
                              </Button>
-
-                              {/* Confirmation Dialog for Section Removal */}
                              <AlertDialog>
                                <AlertDialogTrigger asChild>
                                   <Button
@@ -328,7 +331,7 @@ export function ClassesSections() {
                                      size="icon-sm"
                                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
                                      aria-label={`Remove Section ${sec.name}`}
-                                     disabled={cls.sections.length <= 1 || sec.students.length > 0} // Disable removing last section or if students exist
+                                     disabled={cls.sections.length <= 1 || sec.students.length > 0}
                                    >
                                      <Trash2 className="h-4 w-4" />
                                    </Button>
@@ -346,62 +349,71 @@ export function ClassesSections() {
                                      </AlertDialogFooter>
                                </AlertDialogContent>
                              </AlertDialog>
-
                         </div>
                     </div>
-                    {/* Student Grid - Enhanced Styling */}
-                    {sec.students.length > 0 ? (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-                        {sec.students.map((student) => (
+
+                    {/* Enhanced Student Grid - "Ticket Booking" Style */}
+                    <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 p-2 bg-muted/10 dark:bg-muted/5 border border-dashed rounded-lg">
+                      {Array.from({ length: MAX_STUDENTS_PER_SECTION }).map((_, index) => {
+                        const student = sec.students[index];
+                        const slotNumber = index + 1;
+
+                        return student ? (
+                          // Filled Slot (Student Present)
                           <div
-                             key={student.id}
-                             className="relative group border rounded-md p-2 text-center text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-900 dark:text-indigo-200 cursor-pointer hover:bg-accent hover:text-accent-foreground transition-all duration-200 shadow-sm hover:shadow-lg transform hover:-translate-y-1 border-indigo-100 dark:border-indigo-800" // Added hover transform
-                           >
-                             <p className="font-medium truncate" title={student.name}>{student.name}</p>
-                             <p className="text-indigo-500 dark:text-indigo-400 text-[10px]">R: {student.rollNo}</p>
-                             {/* Action Buttons Overlay */}
-                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-center gap-1 p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-md"> {/* Slightly darker gradient */}
-                                 <Button variant="ghost" size="icon-xs" className="text-white hover:text-primary bg-black/30 hover:bg-black/60 h-6 w-6 rounded-full" onClick={() => openEditStudentModal(student, cls.id, sec.id)} title="Edit Student"> {/* Rounded buttons */}
-                                     <Edit className="h-3 w-3"/>
-                                      <span className="sr-only">Edit</span>
-                                 </Button>
-                                  {/* Confirmation Dialog for Student Removal */}
-                                  <AlertDialog>
-                                     <AlertDialogTrigger asChild>
-                                        <Button variant="ghost" size="icon-xs" className="text-red-300 hover:text-destructive bg-black/30 hover:bg-black/60 h-6 w-6 rounded-full" title="Remove Student"> {/* Rounded buttons */}
-                                           <Trash2 className="h-3 w-3"/>
-                                            <span className="sr-only">Remove</span>
-                                        </Button>
-                                     </AlertDialogTrigger>
-                                      <AlertDialogContent>
-                                          <AlertDialogHeader>
-                                             <AlertDialogTitle>Remove {student.name} ({student.rollNo})?</AlertDialogTitle>
-                                             <AlertDialogDescription>
-                                                 This will remove the student from Section {sec.name}. This action cannot be undone.
-                                             </AlertDialogDescription>
-                                         </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                             <AlertDialogAction onClick={() => handleRemoveStudent(student, cls.id, sec.id)} className={buttonVariants({variant: "destructive"})}>Remove Student</AlertDialogAction>
-                                         </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                  </AlertDialog>
-                             </div>
+                            key={student.id}
+                            className="relative group flex flex-col items-center justify-center aspect-square border rounded-md text-center text-[10px] bg-primary/10 dark:bg-primary/20 text-primary-foreground cursor-pointer hover:bg-primary/20 dark:hover:bg-primary/30 transition-all duration-200 shadow-sm hover:shadow-md border-primary/30 dark:border-primary/50"
+                            title={`${student.name} (Roll: ${student.rollNo}) - Slot ${slotNumber}`}
+                          >
+                             <Avatar className="h-6 w-6 mb-0.5 border-2 border-background">
+                                <AvatarImage src={student.photoUrl} alt={student.name} />
+                                <AvatarFallback className="text-primary text-[8px]"><UserIcon size={10}/></AvatarFallback>
+                             </Avatar>
+                            <p className="font-medium truncate text-primary dark:text-primary/90 text-[9px] leading-tight px-1" title={student.name}>{student.name}</p>
+                            <p className="text-primary/70 dark:text-primary/60 text-[8px]">R:{student.rollNo}</p>
+
+                            {/* Action Buttons Overlay */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-center gap-1 p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-md">
+                                <Button variant="ghost" size="icon-xs" className="text-white hover:text-primary bg-black/40 hover:bg-black/70 h-5 w-5 rounded-full" onClick={() => openEditStudentModal(student, cls.id, sec.id)} title="Edit Student">
+                                    <Edit className="h-2.5 w-2.5"/>
+                                    <span className="sr-only">Edit</span>
+                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon-xs" className="text-red-300 hover:text-destructive bg-black/40 hover:bg-black/70 h-5 w-5 rounded-full" title="Remove Student">
+                                      <Trash2 className="h-2.5 w-2.5"/>
+                                      <span className="sr-only">Remove</span>
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Remove {student.name} ({student.rollNo})?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            This will remove the student from Section {sec.name}. This action cannot be undone.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => handleRemoveStudent(student, cls.id, sec.id)} className={buttonVariants({variant: "destructive"})}>Remove Student</AlertDialogAction>
+                                      </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                            </div>
                           </div>
-                        ))}
-                         {/* Optional: Add empty slots visual */}
-                         {/* Array.from({ length: Math.max(0, (cls.maxStudents ?? 30) - sec.students.length) }).map((_, i) => (
-                             <div key={`empty-${i}`} className="border-dashed border-2 border-muted rounded-md p-2 h-12 flex items-center justify-center text-muted-foreground text-xs">
-                                 Empty
-                             </div>
-                         )) */}
-                      </div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground text-center py-6 border border-dashed rounded-md bg-muted/10"> {/* Enhanced empty state */}
-                          <p>No students assigned yet.</p>
-                          <p>Click 'Add Student' above to populate this section.</p>
-                      </div>
-                    )}
+                        ) : (
+                          // Empty Slot
+                          <div
+                            key={`empty-${index}`}
+                            className="flex flex-col items-center justify-center aspect-square border-dashed border-2 border-muted/50 rounded-md text-muted-foreground/60 text-[10px] bg-background hover:bg-accent/10 dark:hover:bg-accent/20 transition-colors cursor-pointer"
+                            onClick={() => openAddStudentModal(cls.id, sec.id)}
+                            title={`Add Student to Slot ${slotNumber}`}
+                          >
+                            <UserPlus className="h-4 w-4 mb-0.5 opacity-40" />
+                            <span>{slotNumber}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 ))}
               </CardContent>
@@ -418,10 +430,10 @@ export function ClassesSections() {
                     setTargetSection(null);
                 }}
                 onSave={handleSaveStudent}
-                studentData={editingStudent} // Pass existing data if editing
+                studentData={editingStudent}
                 classId={targetSection.classId}
                 sectionId={targetSection.sectionId}
-                availableActivities={mockActivities} // Pass mock activities
+                availableActivities={mockActivities}
              />
          )}
     </Card>
