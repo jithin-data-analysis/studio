@@ -7,7 +7,7 @@ import { Toaster } from '@/components/ui/toaster'; // Import Toaster
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
-  title: 'SATS - Student Academic Tracking System',
+  title: 'Samiksha.AI - GenAI School Progress & Analytics Platform',
   description:
     'GenAI-Powered Academic Tracking Platform for Students, Teachers, and Admins.',
 };

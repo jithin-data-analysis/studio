@@ -1,4 +1,4 @@
-# CampusAI - AI-Powered School Progress Platform
+# Samiksha.AI - GenAI School Progress & Analytics Platform
 
 This is a Next.js application designed as an AI-powered platform to help manage school structures, track student progress, and gain AI-driven insights.
 
@@ -48,8 +48,8 @@ Therefore, it's best described as an **AI-augmented application with agentic com
     *   `ai-instance.ts`: Configures the Genkit instance and Google AI plugin.
     *   `dev.ts`: Entry point for the Genkit development server.
     *   `flows/`: Contains the specific AI agent logic (e.g., `analyze-test-paper.ts`).
+    *   `rag/`: Contains Retrieval-Augmented Generation utilities.
 *   `src/lib/`: Utility functions.
 *   `src/hooks/`: Custom React hooks.
 *   `src/services/`: Backend service interactions (e.g., Supabase).
 *   `src/types/`: TypeScript type definitions.
-```

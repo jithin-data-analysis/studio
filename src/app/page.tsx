@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Target, LogIn } from 'lucide-react';
+import { LogIn, GraduationCap } from 'lucide-react'; // Use GraduationCap for logo
 import { useToast } from '@/hooks/use-toast';
 
 type Role = 'admin' | 'teacher' | 'student' | '';
@@ -70,10 +70,10 @@ export default function LoginPage() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gradient-to-tl from-indigo-100 via-white to-teal-100 dark:from-indigo-900/30 dark:via-background dark:to-teal-900/30">
-      <Target className="h-16 w-16 text-primary mb-4" />
-      <h1 className="text-4xl font-bold text-primary mb-2">SATS</h1>
+      <GraduationCap className="h-16 w-16 text-primary mb-4" /> {/* Logo */}
+      <h1 className="text-4xl font-bold text-primary mb-2">Samiksha.AI</h1> {/* Updated Name */}
       <p className="text-lg text-muted-foreground mb-8 px-4 text-center max-w-xl">
-        Student Academic Tracking System
+        GenAI School Progress & Analytics Platform
       </p>
       <Card className="w-full max-w-md shadow-xl dark:shadow-indigo-900/10 border-t-4 border-primary rounded-xl overflow-hidden">
         <CardHeader>
@@ -131,7 +131,7 @@ export default function LoginPage() {
         </form>
       </Card>
       <footer className="mt-12 text-center text-sm text-muted-foreground">
-        © {new Date().getFullYear()} SATS. All rights reserved.
+        © {new Date().getFullYear()} Samiksha.AI. All rights reserved.
       </footer>
     </div>
   );

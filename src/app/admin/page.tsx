@@ -17,7 +17,7 @@ export default function AdminDashboard() {
        <div className="flex items-center justify-between mb-8">
          {/* Updated Title */}
          <h1 className="text-3xl font-bold text-primary">
-           Admin Configuration Portal
+           Samiksha.AI - Admin Configuration
          </h1>
          <Link href="/" passHref>
            <Button variant="outline">
